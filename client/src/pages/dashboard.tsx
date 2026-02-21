@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, Layers, Wallet, CreditCard, ChevronDown, ChevronRight, ExternalLink, Group } from "lucide-react";
+import { TrendingUp, Layers, Wallet, CreditCard, ChevronDown, ChevronRight, ExternalLink, Group, CalendarClock } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -227,6 +227,56 @@ export default function Dashboard() {
     .filter(s => s.currency !== "JPY" && getRate(s.currency, rates) === 0)
     .map(s => s.currency)
     .filter((v, i, a) => a.indexOf(v) === i);
+
+  const isLongerThanMonthly = (cycle: string): boolean => {
+    if (cycle === "monthly") return false;
+    if (cycle === "annual") return true;
+    const match = cycle.match(/^(\d+)_(days|weeks|months|years)$/);
+    if (!match) return false;
+    const num = parseInt(match[1]);
+    switch (match[2]) {
+      case "days": return false;
+      case "weeks": return false;
+      case "months": return num > 1;
+      case "years": return true;
+    }
+    return false;
+  };
+
+  const now = new Date();
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const thisMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const nextMonthEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+
+  const toDate = (s: string) => new Date(s + "T00:00:00");
+
+  const upcomingThisMonth = activeSubs.filter(s =>
+    isLongerThanMonthly(s.billingCycle) && s.nextBillingDate &&
+    toDate(s.nextBillingDate) >= thisMonthStart && toDate(s.nextBillingDate) <= thisMonthEnd
+  ).sort((a, b) => (a.nextBillingDate || "").localeCompare(b.nextBillingDate || ""));
+
+  const upcomingNextMonth = activeSubs.filter(s =>
+    isLongerThanMonthly(s.billingCycle) && s.nextBillingDate &&
+    toDate(s.nextBillingDate) >= nextMonthStart && toDate(s.nextBillingDate) <= nextMonthEnd
+  ).sort((a, b) => (a.nextBillingDate || "").localeCompare(b.nextBillingDate || ""));
+
+  const formatDateShort = (dateStr: string | null): string => {
+    if (!dateStr) return "-";
+    const d = toDate(dateStr);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  };
+
+  const getCycleLabel = (cycle: string): string => {
+    if (cycle === "annual") return "年額";
+    const match = cycle.match(/^(\d+)_(days|weeks|months|years)$/);
+    if (match) {
+      const num = parseInt(match[1]);
+      const unitMap: Record<string, string> = { days: "日", weeks: "週", months: "ヶ月", years: "年" };
+      return `${num}${unitMap[match[2]] || match[2]}ごと`;
+    }
+    return cycle;
+  };
 
   if (isLoading) {
     return (
@@ -472,6 +522,76 @@ export default function Dashboard() {
                   </div>
                 </CardContent>
               </Card>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(upcomingThisMonth.length > 0 || upcomingNextMonth.length > 0) && (
+        <div>
+          <h2 className="text-lg font-semibold mb-3">支払い予定（月額以外）</h2>
+          <div className="space-y-4">
+            {upcomingThisMonth.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground mb-2">今月（{now.getMonth() + 1}月）</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {upcomingThisMonth.map(sub => {
+                    const cat = categories?.find(c => c.id === sub.categoryId);
+                    const jpyAmount = sub.amount * getRate(sub.currency, rates);
+                    return (
+                      <Card key={sub.id} className="hover-elevate cursor-pointer" onClick={() => navigate(`/subscriptions`)} data-testid={`card-upcoming-${sub.id}`}>
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {cat && <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />}
+                              <span className="font-medium truncate text-sm">{sub.serviceName}</span>
+                              {sub.planName && <span className="text-xs text-muted-foreground">({sub.planName})</span>}
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <Badge variant="outline" className="text-xs">{formatDateShort(sub.nextBillingDate)}</Badge>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+                            <span>{getCycleLabel(sub.billingCycle)}</span>
+                            <span className="font-semibold text-foreground">{formatCurrency(sub.amount, sub.currency)}{sub.currency !== "JPY" && jpyAmount > 0 ? ` (${formatJpy(jpyAmount)})` : ""}</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {upcomingNextMonth.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground mb-2">来月（{now.getMonth() + 2 > 12 ? 1 : now.getMonth() + 2}月）</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {upcomingNextMonth.map(sub => {
+                    const cat = categories?.find(c => c.id === sub.categoryId);
+                    const jpyAmount = sub.amount * getRate(sub.currency, rates);
+                    return (
+                      <Card key={sub.id} className="hover-elevate cursor-pointer" onClick={() => navigate(`/subscriptions`)} data-testid={`card-upcoming-next-${sub.id}`}>
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {cat && <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />}
+                              <span className="font-medium truncate text-sm">{sub.serviceName}</span>
+                              {sub.planName && <span className="text-xs text-muted-foreground">({sub.planName})</span>}
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <Badge variant="outline" className="text-xs">{formatDateShort(sub.nextBillingDate)}</Badge>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+                            <span>{getCycleLabel(sub.billingCycle)}</span>
+                            <span className="font-semibold text-foreground">{formatCurrency(sub.amount, sub.currency)}{sub.currency !== "JPY" && jpyAmount > 0 ? ` (${formatJpy(jpyAmount)})` : ""}</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
         </div>

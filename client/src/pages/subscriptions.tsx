@@ -16,7 +16,7 @@ import { Plus, Pencil, Trash2, Filter, PackageOpen, ArrowUpDown, ArrowUp, ArrowD
 import type { Subscription, Category, PaymentMethod, BillingAccount, ExchangeRate, ServiceGroup } from "@shared/schema";
 import { getCurrencyLabel } from "@/lib/currency";
 
-type SortKey = "name" | "cycleAmount" | "monthly" | "annual";
+type SortKey = "name" | "cycleAmount" | "monthly" | "annual" | "nextBilling";
 type SortDir = "asc" | "desc";
 
 const cycleSelectOptions = [
@@ -100,6 +100,29 @@ function annualJpy(sub: Subscription, rates: ExchangeRate[]): number {
   return monthlyJpy(sub, rates) * 12;
 }
 
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return "-";
+  const d = new Date(dateStr + "T00:00:00");
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function daysUntil(dateStr: string | null): number | null {
+  if (!dateStr) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(dateStr + "T00:00:00");
+  return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function billingDateClass(dateStr: string | null): string {
+  const days = daysUntil(dateStr);
+  if (days === null) return "text-muted-foreground";
+  if (days < 0) return "text-red-500 dark:text-red-400";
+  if (days <= 3) return "text-amber-600 dark:text-amber-400 font-medium";
+  if (days <= 7) return "text-amber-500 dark:text-amber-400";
+  return "";
+}
+
 interface FormData {
   serviceName: string;
   planName: string;
@@ -113,12 +136,13 @@ interface FormData {
   billingAccountId: string;
   serviceGroupId: string;
   note: string;
+  nextBillingDate: string;
   isActive: number;
 }
 
 const defaultForm: FormData = {
   serviceName: "", planName: "", amount: "", currency: "JPY",
-  billingCycle: "monthly", customCycleNumber: "", customCycleUnit: "months", categoryId: "none", paymentMethodId: "none", billingAccountId: "none", serviceGroupId: "none", note: "", isActive: 1,
+  billingCycle: "monthly", customCycleNumber: "", customCycleUnit: "months", categoryId: "none", paymentMethodId: "none", billingAccountId: "none", serviceGroupId: "none", note: "", nextBillingDate: "", isActive: 1,
 };
 
 export default function Subscriptions() {
@@ -198,6 +222,7 @@ export default function Subscriptions() {
       billingAccountId: sub.billingAccountId ? String(sub.billingAccountId) : "none",
       serviceGroupId: sub.serviceGroupId ? String(sub.serviceGroupId) : "none",
       note: sub.note || "",
+      nextBillingDate: sub.nextBillingDate || "",
       isActive: sub.isActive,
     });
     setDialogOpen(true);
@@ -229,6 +254,7 @@ export default function Subscriptions() {
       billingAccountId: form.billingAccountId && form.billingAccountId !== "none" ? parseInt(form.billingAccountId) : null,
       serviceGroupId: form.serviceGroupId && form.serviceGroupId !== "none" ? parseInt(form.serviceGroupId) : null,
       note: form.note || null,
+      nextBillingDate: form.nextBillingDate || null,
       isActive: form.isActive,
     };
     if (editingSub) {
@@ -289,6 +315,12 @@ export default function Subscriptions() {
       case "annual":
         cmp = annualJpy(a, rates) - annualJpy(b, rates);
         break;
+      case "nextBilling": {
+        const da = a.nextBillingDate || "9999-12-31";
+        const db = b.nextBillingDate || "9999-12-31";
+        cmp = da.localeCompare(db);
+        break;
+      }
     }
     return sortDir === "asc" ? cmp : -cmp;
   });
@@ -443,6 +475,11 @@ export default function Subscriptions() {
                           年額換算 <SortIcon k="annual" />
                         </button>
                       </th>
+                      <th className="text-right p-3 font-medium text-muted-foreground">
+                        <button onClick={() => toggleSort("nextBilling")} className="flex items-center gap-1 cursor-pointer ml-auto" data-testid="sort-next-billing">
+                          次回課金日 <SortIcon k="nextBilling" />
+                        </button>
+                      </th>
                       <th className="p-3 w-24"></th>
                     </tr>
                   </thead>
@@ -482,6 +519,9 @@ export default function Subscriptions() {
                           <td className="p-3 text-right align-top">
                             <div className="font-medium" data-testid={`text-sub-annual-${sub.id}`}>{formatJpy(aJpy)}</div>
                           </td>
+                          <td className={`p-3 text-right align-top text-sm ${billingDateClass(sub.nextBillingDate)}`} data-testid={`text-sub-next-billing-${sub.id}`}>
+                            {formatDate(sub.nextBillingDate)}
+                          </td>
                           <td className="p-3 text-right align-top">
                             <div className="flex items-center justify-end gap-1">
                               <Button size="icon" variant="ghost" onClick={() => openEdit(sub)} data-testid={`button-edit-sub-${sub.id}`}>
@@ -504,7 +544,7 @@ export default function Subscriptions() {
           <div className="md:hidden space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground">並び替え:</span>
-              {([["name", "名前"], ["monthly", "月額"], ["annual", "年額"], ["cycleAmount", "課金額"]] as [SortKey, string][]).map(([k, label]) => (
+              {([["name", "名前"], ["monthly", "月額"], ["annual", "年額"], ["cycleAmount", "課金額"], ["nextBilling", "課金日"]] as [SortKey, string][]).map(([k, label]) => (
                 <button
                   key={k}
                   onClick={() => toggleSort(k)}
@@ -562,6 +602,11 @@ export default function Subscriptions() {
                         <div className="text-sm font-medium">{formatJpy(aJpy)}</div>
                       </div>
                     </div>
+                    {sub.nextBillingDate && (
+                      <div className={`mt-2 text-xs ${billingDateClass(sub.nextBillingDate)}`}>
+                        次回課金日: {formatDate(sub.nextBillingDate)}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               );
@@ -639,6 +684,15 @@ export default function Subscriptions() {
                   </Select>
                 </div>
               )}
+            </div>
+            <div className="space-y-2">
+              <Label>次回課金日</Label>
+              <Input
+                type="date"
+                value={form.nextBillingDate}
+                onChange={e => setForm({ ...form, nextBillingDate: e.target.value })}
+                data-testid="input-next-billing-date"
+              />
             </div>
             <div className="space-y-2">
               <Label>カテゴリ</Label>

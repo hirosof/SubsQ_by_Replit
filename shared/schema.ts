@@ -1,6 +1,6 @@
 export * from "./models/auth";
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, serial, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -72,6 +72,7 @@ export const subscriptions = pgTable("subscriptions", {
   billingAccountId: integer("billing_account_id").references(() => billingAccounts.id, { onDelete: "set null" }),
   serviceGroupId: integer("service_group_id").references(() => serviceGroups.id, { onDelete: "set null" }),
   note: text("note"),
+  nextBillingDate: date("next_billing_date"),
   isActive: integer("is_active").notNull().default(1),
 });
 
