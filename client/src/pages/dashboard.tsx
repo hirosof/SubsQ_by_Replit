@@ -429,7 +429,7 @@ export default function Dashboard() {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <Group className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: sg.color }} />
                       <span className="font-medium truncate" data-testid={`text-sg-name-${sg.id}`}>{sg.name}</span>
                       <Badge variant="secondary" className="text-xs">{sg.count}件</Badge>
                     </div>
@@ -440,8 +440,11 @@ export default function Dashboard() {
                   </div>
                   <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-primary transition-all"
-                      style={{ width: `${totalMonthlyJpy > 0 ? (sg.monthlyJpy / totalMonthlyJpy) * 100 : 0}%` }}
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        backgroundColor: sg.color,
+                        width: `${totalMonthlyJpy > 0 ? (sg.monthlyJpy / totalMonthlyJpy) * 100 : 0}%`,
+                      }}
                     />
                   </div>
                 </CardContent>

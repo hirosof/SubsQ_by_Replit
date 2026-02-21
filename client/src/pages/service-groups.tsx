@@ -11,11 +11,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Group } from "lucide-react";
 import type { ServiceGroup } from "@shared/schema";
-
-const colorPresets = [
-  "#6366f1", "#3b82f6", "#ef4444", "#22c55e", "#f59e0b",
-  "#8b5cf6", "#ec4899", "#06b6d4", "#f97316", "#14b8a6",
-];
+import { ColorPicker, colorPresets } from "@/components/color-picker";
 
 export default function ServiceGroups() {
   const { toast } = useToast();
@@ -147,17 +143,7 @@ export default function ServiceGroups() {
             </div>
             <div className="space-y-2">
               <Label>カラー</Label>
-              <div className="flex items-center gap-2 flex-wrap">
-                {colorPresets.map(c => (
-                  <button
-                    key={c}
-                    onClick={() => setColor(c)}
-                    className={`w-7 h-7 rounded-full transition-all cursor-pointer ${color === c ? "ring-2 ring-offset-2 ring-primary" : ""}`}
-                    style={{ backgroundColor: c }}
-                    data-testid={`button-sg-color-${c}`}
-                  />
-                ))}
-              </div>
+              <ColorPicker value={color} onChange={setColor} testIdPrefix="sg-color" />
             </div>
           </div>
           <DialogFooter>

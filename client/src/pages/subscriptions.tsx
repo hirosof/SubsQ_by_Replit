@@ -466,7 +466,7 @@ export default function Subscriptions() {
                             <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
                               {cat && <span>{cat.name}</span>}
                               {pm && <span className="flex items-center gap-1"><CreditCardIcon />{pm.name}{ba ? ` / ${ba.name}` : ""}</span>}
-                              {sg && <Badge variant="outline" className="text-xs">{sg.name}</Badge>}
+                              {sg && <Badge variant="outline" className="text-xs" style={{ borderColor: sg.color, color: sg.color }}>{sg.name}</Badge>}
                               {sub.note && <span className="truncate max-w-[180px]">{sub.note}</span>}
                             </div>
                           </td>
@@ -536,7 +536,7 @@ export default function Subscriptions() {
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
                           {cat && <span>{cat.name}</span>}
                           {pm && <span className="flex items-center gap-1"><CreditCardIcon />{pm.name}{ba ? ` / ${ba.name}` : ""}</span>}
-                          {sg && <Badge variant="outline" className="text-xs">{sg.name}</Badge>}
+                          {sg && <Badge variant="outline" className="text-xs" style={{ borderColor: sg.color, color: sg.color }}>{sg.name}</Badge>}
                         </div>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
