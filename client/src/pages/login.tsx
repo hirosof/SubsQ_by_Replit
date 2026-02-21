@@ -4,7 +4,7 @@ import { Wallet, Shield, BarChart3, LogIn } from "lucide-react";
 
 export default function Login() {
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
+    <div className="min-h-dvh flex flex-col lg:flex-row" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="lg:w-1/2 bg-gradient-to-br from-primary/10 via-primary/5 to-background flex flex-col justify-between p-8 lg:p-12">
         <div>
           <div className="flex items-center gap-2 mb-12">

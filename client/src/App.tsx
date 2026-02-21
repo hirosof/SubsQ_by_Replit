@@ -40,14 +40,14 @@ const sidebarStyle = {
 function AuthenticatedApp() {
   return (
     <SidebarProvider style={sidebarStyle as React.CSSProperties}>
-      <div className="flex h-screen w-full">
+      <div className="flex h-dvh w-full">
         <AppSidebar />
         <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center justify-between gap-1 p-2 border-b">
+          <header className="flex items-center justify-between gap-1 p-2 border-b" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <ThemeToggle />
           </header>
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 overflow-auto" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
             <Router />
           </main>
         </div>
@@ -61,7 +61,7 @@ function AppContent() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-dvh">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
