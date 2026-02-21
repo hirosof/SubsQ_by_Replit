@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Filter, PackageOpen } from "lucide-react";
 import type { Subscription, Category, PaymentMethod, BillingAccount, ExchangeRate } from "@shared/schema";
+import { getCurrencyLabel } from "@/lib/currency";
 
 const cycleSelectOptions = [
   { value: "monthly", label: "月額" },
@@ -300,7 +301,7 @@ export default function Subscriptions() {
             <SelectContent>
               <SelectItem value="all">通貨: すべて</SelectItem>
               {availableCurrencies.map(c => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
+                <SelectItem key={c} value={c}>{getCurrencyLabel(c)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -396,7 +397,7 @@ export default function Subscriptions() {
                 <Select value={form.currency} onValueChange={v => setForm({ ...form, currency: v })}>
                   <SelectTrigger data-testid="select-currency"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {commonCurrencies.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {commonCurrencies.map(c => <SelectItem key={c} value={c}>{getCurrencyLabel(c)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

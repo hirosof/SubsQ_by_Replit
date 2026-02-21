@@ -6,6 +6,7 @@ import { TrendingUp, Layers, Wallet, CreditCard, ChevronDown, ChevronRight } fro
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useState } from "react";
 import type { Subscription, Category, ExchangeRate, PaymentMethod, BillingAccount } from "@shared/schema";
+import { getCurrencyLabel } from "@/lib/currency";
 
 function formatJpy(amount: number): string {
   return new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY", maximumFractionDigits: 0 }).format(amount);
@@ -253,7 +254,7 @@ export default function Dashboard() {
             <div className="space-y-1">
               {Object.entries(currencyBreakdown).map(([cur, data]) => (
                 <div key={cur} className="flex items-center justify-between gap-1 text-sm">
-                  <Badge variant="secondary" className="text-xs">{cur}</Badge>
+                  <Badge variant="secondary" className="text-xs">{getCurrencyLabel(cur)}</Badge>
                   <span className="font-medium">{formatCurrency(data.total, cur)}/月</span>
                 </div>
               ))}

@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, ArrowRightLeft, Coins } from "lucide-react";
 import type { ExchangeRate } from "@shared/schema";
+import { getCurrencyLabel, getCurrencyInfo } from "@/lib/currency";
 
 const commonCurrencies = ["USD", "EUR", "GBP", "CNY", "KRW", "TWD", "AUD", "CAD", "CHF", "SGD", "HKD", "THB", "INR", "BRL", "MXN"];
 
@@ -140,11 +141,11 @@ export default function ExchangeRates() {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
-                      <span className="text-sm font-bold text-primary">{rate.currency}</span>
+                      <span className="text-sm font-bold text-primary">{getCurrencyInfo(rate.currency).symbol}</span>
                     </div>
                     <div>
                       <div className="font-semibold" data-testid={`text-rate-currency-${rate.id}`}>
-                        1 {rate.currency} = {rate.rateToJpy.toLocaleString("ja-JP")} JPY
+                        1 {getCurrencyLabel(rate.currency)} = {rate.rateToJpy.toLocaleString("ja-JP")} JPY
                       </div>
                       <div className="text-xs text-muted-foreground">
                         1 JPY = {(1 / rate.rateToJpy).toFixed(6)} {rate.currency}
@@ -181,7 +182,7 @@ export default function ExchangeRates() {
                   <Select value={form.currency} onValueChange={v => setForm({ ...form, currency: v })}>
                     <SelectTrigger data-testid="select-currency"><SelectValue placeholder="通貨を選択" /></SelectTrigger>
                     <SelectContent>
-                      {availableCurrencies.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                      {availableCurrencies.map(c => <SelectItem key={c} value={c}>{getCurrencyLabel(c)}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 ) : (
@@ -226,7 +227,7 @@ export default function ExchangeRates() {
           <AlertDialogHeader>
             <AlertDialogTitle>削除の確認</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteTarget?.currency} のレートを削除してもよろしいですか？この通貨を使用しているサブスクリプションの換算額が算出できなくなります。
+              {deleteTarget ? getCurrencyLabel(deleteTarget.currency) : ""} のレートを削除してもよろしいですか？この通貨を使用しているサブスクリプションの換算額が算出できなくなります。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
