@@ -57,7 +57,7 @@ type PaymentMethodSummary = PaymentMethod & {
   unassignedMonthly: number;
 };
 
-function PaymentMethodCard({ pm, totalMonthlyJpy, hasBillingBreakdown, onNavigate }: { pm: PaymentMethodSummary; totalMonthlyJpy: number; hasBillingBreakdown: boolean; onNavigate: () => void }) {
+function PaymentMethodCard({ pm, totalMonthlyJpy, hasBillingBreakdown, onNavigate, onNavigateBa }: { pm: PaymentMethodSummary; totalMonthlyJpy: number; hasBillingBreakdown: boolean; onNavigate: () => void; onNavigateBa: (baId: number | null) => void }) {
   const [open, setOpen] = useState(false);
 
   const cardContent = (
@@ -109,23 +109,37 @@ function PaymentMethodCard({ pm, totalMonthlyJpy, hasBillingBreakdown, onNavigat
             <button className="w-full text-left cursor-pointer" data-testid={`btn-pm-expand-${pm.id}`}>{cardContent}</button>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="mt-3 pl-6 space-y-2 border-l-2 border-muted ml-2">
+            <div className="mt-3 pl-6 space-y-1 border-l-2 border-muted ml-2">
               {pm.billingBreakdown.map(ba => (
-                <div key={ba.id} className="flex items-center justify-between gap-2 text-sm" data-testid={`row-ba-${ba.id}`}>
+                <div
+                  key={ba.id}
+                  className="flex items-center justify-between gap-2 text-sm rounded-md px-2 py-1.5 hover:bg-muted/50 cursor-pointer transition-colors"
+                  onClick={() => onNavigateBa(ba.id)}
+                  data-testid={`row-ba-${ba.id}`}
+                >
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="truncate text-muted-foreground" data-testid={`text-ba-name-${ba.id}`}>{ba.name}</span>
                     <Badge variant="outline" className="text-xs">{ba.count}件</Badge>
                   </div>
-                  <span className="font-semibold whitespace-nowrap" data-testid={`text-ba-cost-${ba.id}`}>{formatJpy(ba.monthlyJpy)}/月</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="font-semibold whitespace-nowrap" data-testid={`text-ba-cost-${ba.id}`}>{formatJpy(ba.monthlyJpy)}/月</span>
+                    <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                  </div>
                 </div>
               ))}
               {pm.unassignedCount > 0 && (
-                <div className="flex items-center justify-between gap-2 text-sm">
+                <div
+                  className="flex items-center justify-between gap-2 text-sm rounded-md px-2 py-1.5 hover:bg-muted/50 cursor-pointer transition-colors"
+                  onClick={() => onNavigateBa(null)}
+                >
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="truncate text-muted-foreground">請求先未設定</span>
                     <Badge variant="outline" className="text-xs">{pm.unassignedCount}件</Badge>
                   </div>
-                  <span className="font-semibold whitespace-nowrap">{formatJpy(pm.unassignedMonthly)}/月</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="font-semibold whitespace-nowrap">{formatJpy(pm.unassignedMonthly)}/月</span>
+                    <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                  </div>
                 </div>
               )}
             </div>
@@ -363,6 +377,7 @@ export default function Dashboard() {
                   totalMonthlyJpy={totalMonthlyJpy}
                   hasBillingBreakdown={hasBillingBreakdown}
                   onNavigate={() => navigate(`/subscriptions?paymentMethod=${pm.id}`)}
+                  onNavigateBa={(baId) => navigate(`/subscriptions?paymentMethod=${pm.id}&billingAccount=${baId === null ? "none" : baId}`)}
                 />
               );
             })}
