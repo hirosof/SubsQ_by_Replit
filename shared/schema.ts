@@ -9,6 +9,7 @@ export const categories = pgTable("categories", {
   name: text("name").notNull(),
   color: text("color").notNull().default("#3b82f6"),
   icon: text("icon").notNull().default("folder"),
+  sortOrder: integer("sort_order").notNull().default(0),
 });
 
 export const categoriesRelations = relations(categories, ({ many }) => ({
@@ -44,6 +45,7 @@ export const serviceGroups = pgTable("service_groups", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   color: text("color").notNull().default("#6366f1"),
+  sortOrder: integer("sort_order").notNull().default(0),
 });
 
 export const serviceGroupsRelations = relations(serviceGroups, ({ many }) => ({

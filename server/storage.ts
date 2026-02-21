@@ -7,7 +7,7 @@ import {
   serviceGroups, type ServiceGroup, type InsertServiceGroup,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 
 export interface IStorage {
   getCategories(): Promise<Category[]>;
@@ -50,7 +50,7 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   async getCategories(): Promise<Category[]> {
-    return db.select().from(categories);
+    return db.select().from(categories).orderBy(asc(categories.sortOrder), asc(categories.id));
   }
   async getCategory(id: number): Promise<Category | undefined> {
     const [row] = await db.select().from(categories).where(eq(categories.id, id));
@@ -130,7 +130,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getServiceGroups(): Promise<ServiceGroup[]> {
-    return db.select().from(serviceGroups);
+    return db.select().from(serviceGroups).orderBy(asc(serviceGroups.sortOrder), asc(serviceGroups.id));
   }
   async getServiceGroup(id: number): Promise<ServiceGroup | undefined> {
     const [row] = await db.select().from(serviceGroups).where(eq(serviceGroups.id, id));

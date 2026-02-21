@@ -202,7 +202,14 @@ export default function Subscriptions() {
 
   const openCreate = () => {
     setEditingSub(null);
-    setForm(defaultForm);
+    setForm({
+      ...defaultForm,
+      categoryId: filterCategory !== "all" ? filterCategory : "none",
+      paymentMethodId: filterPaymentMethod !== "all" ? filterPaymentMethod : "none",
+      billingAccountId: filterBillingAccount !== "all" ? filterBillingAccount : "none",
+      serviceGroupId: filterServiceGroup !== "all" ? filterServiceGroup : "none",
+      currency: filterCurrency !== "all" ? filterCurrency : "JPY",
+    });
     setDialogOpen(true);
   };
   const openEdit = (sub: Subscription) => {

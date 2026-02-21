@@ -30,6 +30,16 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  app.put("/api/categories/reorder", isAuthenticated, async (req, res) => {
+    const ids = req.body.ids;
+    if (!Array.isArray(ids)) return res.status(400).json({ message: "ids array required" });
+    for (let i = 0; i < ids.length; i++) {
+      await storage.updateCategory(ids[i], { sortOrder: i });
+    }
+    const data = await storage.getCategories();
+    res.json(data);
+  });
+
   app.get("/api/payment-methods", isAuthenticated, async (_req, res) => {
     const data = await storage.getPaymentMethods();
     res.json(data);
@@ -148,6 +158,16 @@ export async function registerRoutes(
   app.delete("/api/service-groups/:id", isAuthenticated, async (req, res) => {
     await storage.deleteServiceGroup(parseInt(req.params.id));
     res.status(204).send();
+  });
+
+  app.put("/api/service-groups/reorder", isAuthenticated, async (req, res) => {
+    const ids = req.body.ids;
+    if (!Array.isArray(ids)) return res.status(400).json({ message: "ids array required" });
+    for (let i = 0; i < ids.length; i++) {
+      await storage.updateServiceGroup(ids[i], { sortOrder: i });
+    }
+    const data = await storage.getServiceGroups();
+    res.json(data);
   });
 
   app.get("/api/subscriptions", isAuthenticated, async (_req, res) => {

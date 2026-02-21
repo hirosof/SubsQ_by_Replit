@@ -9,7 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Group } from "lucide-react";
+import { Plus, Pencil, Trash2, Group, ChevronUp, ChevronDown } from "lucide-react";
 import type { ServiceGroup } from "@shared/schema";
 import { ColorPicker, colorPresets } from "@/components/color-picker";
 
@@ -52,6 +52,13 @@ export default function ServiceGroups() {
     },
     onError: (e: Error) => toast({ title: "エラー", description: e.message, variant: "destructive" }),
   });
+  const reorderMutation = useMutation({
+    mutationFn: (ids: number[]) => apiRequest("PUT", "/api/service-groups/reorder", { ids }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/service-groups"] });
+    },
+    onError: (e: Error) => toast({ title: "エラー", description: e.message, variant: "destructive" }),
+  });
 
   const openCreate = () => {
     setEditing(null);
@@ -76,6 +83,15 @@ export default function ServiceGroups() {
     } else {
       createMutation.mutate(payload);
     }
+  };
+
+  const moveItem = (index: number, direction: "up" | "down") => {
+    if (!groups) return;
+    const ids = groups.map(g => g.id);
+    const swapIdx = direction === "up" ? index - 1 : index + 1;
+    if (swapIdx < 0 || swapIdx >= ids.length) return;
+    [ids[index], ids[swapIdx]] = [ids[swapIdx], ids[index]];
+    reorderMutation.mutate(ids);
   };
 
   if (isLoading) {
@@ -110,10 +126,28 @@ export default function ServiceGroups() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {groups?.map(g => (
+          {groups?.map((g, idx) => (
             <Card key={g.id} className="hover-elevate">
               <CardContent className="p-4 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex flex-col gap-0.5">
+                    <button
+                      onClick={() => moveItem(idx, "up")}
+                      disabled={idx === 0 || reorderMutation.isPending}
+                      className="p-0.5 rounded hover:bg-muted disabled:opacity-20 disabled:cursor-default"
+                      data-testid={`button-move-up-sg-${g.id}`}
+                    >
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => moveItem(idx, "down")}
+                      disabled={idx === (groups?.length || 0) - 1 || reorderMutation.isPending}
+                      className="p-0.5 rounded hover:bg-muted disabled:opacity-20 disabled:cursor-default"
+                      data-testid={`button-move-down-sg-${g.id}`}
+                    >
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                   <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: g.color }} />
                   <span className="font-medium" data-testid={`text-sg-name-${g.id}`}>{g.name}</span>
                 </div>
