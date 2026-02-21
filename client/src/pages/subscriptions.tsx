@@ -12,9 +12,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Filter, PackageOpen } from "lucide-react";
+import { Plus, Pencil, Trash2, Filter, PackageOpen, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import type { Subscription, Category, PaymentMethod, BillingAccount, ExchangeRate } from "@shared/schema";
 import { getCurrencyLabel } from "@/lib/currency";
+
+type SortKey = "name" | "cycleAmount" | "monthly" | "annual";
+type SortDir = "asc" | "desc";
 
 const cycleSelectOptions = [
   { value: "monthly", label: "月額" },
@@ -73,6 +76,30 @@ function getRate(currency: string, rates: ExchangeRate[]): number {
   return found ? found.rateToJpy : 0;
 }
 
+function toMonthlyMultiplier(cycle: string): number {
+  if (cycle === "monthly") return 1;
+  if (cycle === "annual") return 1 / 12;
+  const match = cycle.match(/^(\d+)_(days|weeks|months|years)$/);
+  if (match) {
+    const num = parseInt(match[1]);
+    switch (match[2]) {
+      case "days": return 30 / num;
+      case "weeks": return 4.33 / num;
+      case "months": return 1 / num;
+      case "years": return 1 / (num * 12);
+    }
+  }
+  return 1;
+}
+
+function monthlyJpy(sub: Subscription, rates: ExchangeRate[]): number {
+  return sub.amount * getRate(sub.currency, rates) * toMonthlyMultiplier(sub.billingCycle);
+}
+
+function annualJpy(sub: Subscription, rates: ExchangeRate[]): number {
+  return monthlyJpy(sub, rates) * 12;
+}
+
 interface FormData {
   serviceName: string;
   planName: string;
@@ -102,6 +129,8 @@ export default function Subscriptions() {
   const [filterBillingAccount, setFilterBillingAccount] = useState<string>(searchParams.get("billingAccount") || "all");
   const [filterCurrency, setFilterCurrency] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [sortKey, setSortKey] = useState<SortKey>("monthly");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSub, setEditingSub] = useState<Subscription | null>(null);
   const [form, setForm] = useState<FormData>(defaultForm);
@@ -225,6 +254,42 @@ export default function Subscriptions() {
     return true;
   }) || [];
 
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir(key === "name" ? "asc" : "desc");
+    }
+  };
+
+  const sortedSubs = [...filteredSubs].sort((a, b) => {
+    let cmp = 0;
+    switch (sortKey) {
+      case "name":
+        cmp = a.serviceName.localeCompare(b.serviceName, "ja");
+        break;
+      case "cycleAmount": {
+        const aJpy = a.amount * getRate(a.currency, rates);
+        const bJpy = b.amount * getRate(b.currency, rates);
+        cmp = aJpy - bJpy;
+        break;
+      }
+      case "monthly":
+        cmp = monthlyJpy(a, rates) - monthlyJpy(b, rates);
+        break;
+      case "annual":
+        cmp = annualJpy(a, rates) - annualJpy(b, rates);
+        break;
+    }
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  const SortIcon = ({ k }: { k: SortKey }) => {
+    if (sortKey !== k) return <ArrowUpDown className="h-3 w-3 opacity-40" />;
+    return sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />;
+  };
+
   const filteredBillingAccounts = billingAccounts?.filter(
     ba => form.paymentMethodId && form.paymentMethodId !== "none" && ba.paymentMethodId === parseInt(form.paymentMethodId)
   ) || [];
@@ -320,7 +385,7 @@ export default function Subscriptions() {
         </Select>
       </div>
 
-      {filteredSubs.length === 0 ? (
+      {sortedSubs.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             <PackageOpen className="h-12 w-12 mx-auto mb-3 opacity-40" />
@@ -329,50 +394,154 @@ export default function Subscriptions() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
-          {filteredSubs.map(sub => {
-            const cat = categories?.find(c => c.id === sub.categoryId);
-            const pm = paymentMethods?.find(p => p.id === sub.paymentMethodId);
-            const ba = billingAccounts?.find(b => b.id === sub.billingAccountId);
-            const amtJpy = sub.amount * getRate(sub.currency, rates);
-            return (
-              <Card key={sub.id} className="hover-elevate">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {cat && <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />}
-                        <span className="font-semibold" data-testid={`text-sub-name-${sub.id}`}>{sub.serviceName}</span>
-                        {sub.planName && <span className="text-sm text-muted-foreground">({sub.planName})</span>}
-                        <Badge variant="outline" className="text-xs">{getCycleDisplayLabel(sub.billingCycle)}</Badge>
-                        {sub.isActive === 0 && <Badge variant="secondary" className="text-xs">停止中</Badge>}
+        <>
+          <div className="hidden md:block">
+            <Card>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left p-3 font-medium text-muted-foreground">
+                        <button onClick={() => toggleSort("name")} className="flex items-center gap-1 cursor-pointer" data-testid="sort-name">
+                          サービス <SortIcon k="name" />
+                        </button>
+                      </th>
+                      <th className="text-right p-3 font-medium text-muted-foreground">
+                        <button onClick={() => toggleSort("cycleAmount")} className="flex items-center gap-1 cursor-pointer ml-auto" data-testid="sort-cycle">
+                          課金額 <SortIcon k="cycleAmount" />
+                        </button>
+                      </th>
+                      <th className="text-right p-3 font-medium text-muted-foreground">
+                        <button onClick={() => toggleSort("monthly")} className="flex items-center gap-1 cursor-pointer ml-auto" data-testid="sort-monthly">
+                          月額換算 <SortIcon k="monthly" />
+                        </button>
+                      </th>
+                      <th className="text-right p-3 font-medium text-muted-foreground">
+                        <button onClick={() => toggleSort("annual")} className="flex items-center gap-1 cursor-pointer ml-auto" data-testid="sort-annual">
+                          年額換算 <SortIcon k="annual" />
+                        </button>
+                      </th>
+                      <th className="p-3 w-24"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedSubs.map(sub => {
+                      const cat = categories?.find(c => c.id === sub.categoryId);
+                      const pm = paymentMethods?.find(p => p.id === sub.paymentMethodId);
+                      const ba = billingAccounts?.find(b => b.id === sub.billingAccountId);
+                      const mJpy = monthlyJpy(sub, rates);
+                      const aJpy = annualJpy(sub, rates);
+                      return (
+                        <tr key={sub.id} className="border-b last:border-b-0 hover:bg-muted/30 transition-colors" data-testid={`row-sub-${sub.id}`}>
+                          <td className="p-3">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {cat && <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />}
+                              <span className="font-semibold" data-testid={`text-sub-name-${sub.id}`}>{sub.serviceName}</span>
+                              {sub.planName && <span className="text-muted-foreground">({sub.planName})</span>}
+                              {sub.isActive === 0 && <Badge variant="secondary" className="text-xs">停止中</Badge>}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
+                              {cat && <span>{cat.name}</span>}
+                              {pm && <span className="flex items-center gap-1"><CreditCardIcon />{pm.name}{ba ? ` / ${ba.name}` : ""}</span>}
+                              {sub.note && <span className="truncate max-w-[180px]">{sub.note}</span>}
+                            </div>
+                          </td>
+                          <td className="p-3 text-right align-top">
+                            <div className="font-medium">
+                              {formatCurrency(sub.amount, sub.currency)}
+                            </div>
+                            <div className="text-xs text-muted-foreground">{getCycleDisplayLabel(sub.billingCycle)}</div>
+                          </td>
+                          <td className="p-3 text-right align-top">
+                            <div className="font-medium" data-testid={`text-sub-monthly-${sub.id}`}>{formatJpy(mJpy)}</div>
+                          </td>
+                          <td className="p-3 text-right align-top">
+                            <div className="font-medium" data-testid={`text-sub-annual-${sub.id}`}>{formatJpy(aJpy)}</div>
+                          </td>
+                          <td className="p-3 text-right align-top">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button size="icon" variant="ghost" onClick={() => openEdit(sub)} data-testid={`button-edit-sub-${sub.id}`}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => setDeleteTarget(sub)} data-testid={`button-delete-sub-${sub.id}`}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
+
+          <div className="md:hidden space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground">並び替え:</span>
+              {([["name", "名前"], ["monthly", "月額"], ["annual", "年額"], ["cycleAmount", "課金額"]] as [SortKey, string][]).map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => toggleSort(k)}
+                  className={`text-xs px-2 py-1 rounded-md cursor-pointer transition-colors ${sortKey === k ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                  data-testid={`sort-mobile-${k}`}
+                >
+                  {label} {sortKey === k && (sortDir === "asc" ? "↑" : "↓")}
+                </button>
+              ))}
+            </div>
+            {sortedSubs.map(sub => {
+              const cat = categories?.find(c => c.id === sub.categoryId);
+              const pm = paymentMethods?.find(p => p.id === sub.paymentMethodId);
+              const ba = billingAccounts?.find(b => b.id === sub.billingAccountId);
+              const mJpy = monthlyJpy(sub, rates);
+              const aJpy = annualJpy(sub, rates);
+              return (
+                <Card key={sub.id} className="hover-elevate">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {cat && <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />}
+                          <span className="font-semibold" data-testid={`text-sub-name-${sub.id}`}>{sub.serviceName}</span>
+                          {sub.planName && <span className="text-sm text-muted-foreground">({sub.planName})</span>}
+                          {sub.isActive === 0 && <Badge variant="secondary" className="text-xs">停止中</Badge>}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
+                          {cat && <span>{cat.name}</span>}
+                          {pm && <span className="flex items-center gap-1"><CreditCardIcon />{pm.name}{ba ? ` / ${ba.name}` : ""}</span>}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3 mt-1.5 text-sm text-muted-foreground flex-wrap">
-                        {cat && <span>{cat.name}</span>}
-                        {pm && <span className="flex items-center gap-1"><CreditCardIcon />{pm.name}{ba ? ` / ${ba.name}` : ""}</span>}
-                        {sub.note && <span className="truncate max-w-[200px]">{sub.note}</span>}
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <Button size="icon" variant="ghost" onClick={() => openEdit(sub)} data-testid={`button-edit-sub-${sub.id}`}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => setDeleteTarget(sub)} data-testid={`button-delete-sub-${sub.id}`}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <div className="text-right">
-                        {sub.currency !== "JPY" && (
-                          <div className="text-sm text-muted-foreground">{formatCurrency(sub.amount, sub.currency)}</div>
-                        )}
-                        <div className="font-bold" data-testid={`text-sub-jpy-${sub.id}`}>{formatJpy(amtJpy)}</div>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-muted/40 rounded-md px-2 py-1.5">
+                        <div className="text-[10px] text-muted-foreground">{getCycleDisplayLabel(sub.billingCycle)}</div>
+                        <div className="text-sm font-medium">{formatCurrency(sub.amount, sub.currency)}</div>
                       </div>
-                      <Button size="icon" variant="ghost" onClick={() => openEdit(sub)} data-testid={`button-edit-sub-${sub.id}`}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" onClick={() => setDeleteTarget(sub)} data-testid={`button-delete-sub-${sub.id}`}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="bg-muted/40 rounded-md px-2 py-1.5">
+                        <div className="text-[10px] text-muted-foreground">月額換算</div>
+                        <div className="text-sm font-medium">{formatJpy(mJpy)}</div>
+                      </div>
+                      <div className="bg-muted/40 rounded-md px-2 py-1.5">
+                        <div className="text-[10px] text-muted-foreground">年額換算</div>
+                        <div className="text-sm font-medium">{formatJpy(aJpy)}</div>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </>
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
