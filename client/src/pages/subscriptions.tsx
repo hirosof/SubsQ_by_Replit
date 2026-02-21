@@ -95,6 +95,10 @@ const defaultForm: FormData = {
 export default function Subscriptions() {
   const { toast } = useToast();
   const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>("all");
+  const [filterBillingAccount, setFilterBillingAccount] = useState<string>("all");
+  const [filterCurrency, setFilterCurrency] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSub, setEditingSub] = useState<Subscription | null>(null);
   const [form, setForm] = useState<FormData>(defaultForm);
@@ -197,11 +201,26 @@ export default function Subscriptions() {
     }
   };
 
-  const filteredSubs = subscriptions?.filter(s =>
-    filterCategory === "all" ? true :
-    filterCategory === "none" ? !s.categoryId :
-    s.categoryId === parseInt(filterCategory)
+  const filterBillingAccountsForPm = billingAccounts?.filter(
+    ba => filterPaymentMethod !== "all" && filterPaymentMethod !== "none" && ba.paymentMethodId === parseInt(filterPaymentMethod)
   ) || [];
+
+  const availableCurrencies = Array.from(new Set(subscriptions?.map(s => s.currency) || [])).sort();
+
+  const filteredSubs = subscriptions?.filter(s => {
+    if (filterCategory !== "all") {
+      if (filterCategory === "none" ? s.categoryId : s.categoryId !== parseInt(filterCategory)) return false;
+    }
+    if (filterPaymentMethod !== "all") {
+      if (filterPaymentMethod === "none" ? s.paymentMethodId : s.paymentMethodId !== parseInt(filterPaymentMethod)) return false;
+    }
+    if (filterBillingAccount !== "all") {
+      if (filterBillingAccount === "none" ? s.billingAccountId : s.billingAccountId !== parseInt(filterBillingAccount)) return false;
+    }
+    if (filterCurrency !== "all" && s.currency !== filterCurrency) return false;
+    if (filterStatus !== "all" && s.isActive !== parseInt(filterStatus)) return false;
+    return true;
+  }) || [];
 
   const filteredBillingAccounts = billingAccounts?.filter(
     ba => form.paymentMethodId && form.paymentMethodId !== "none" && ba.paymentMethodId === parseInt(form.paymentMethodId)
@@ -236,15 +255,64 @@ export default function Subscriptions() {
       <div className="flex items-center gap-2 flex-wrap">
         <Filter className="h-4 w-4 text-muted-foreground" />
         <Select value={filterCategory} onValueChange={setFilterCategory}>
-          <SelectTrigger className="w-48" data-testid="select-filter-category">
-            <SelectValue placeholder="カテゴリで絞り込み" />
+          <SelectTrigger className="w-40" data-testid="select-filter-category">
+            <SelectValue placeholder="カテゴリ" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">すべて</SelectItem>
+            <SelectItem value="all">カテゴリ: すべて</SelectItem>
             <SelectItem value="none">未分類</SelectItem>
             {categories?.map(c => (
               <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={filterPaymentMethod} onValueChange={v => { setFilterPaymentMethod(v); setFilterBillingAccount("all"); }}>
+          <SelectTrigger className="w-44" data-testid="select-filter-payment-method">
+            <SelectValue placeholder="支払い方法" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">支払い方法: すべて</SelectItem>
+            <SelectItem value="none">未設定</SelectItem>
+            {paymentMethods?.map(p => (
+              <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {filterPaymentMethod !== "all" && filterPaymentMethod !== "none" && filterBillingAccountsForPm.length > 0 && (
+          <Select value={filterBillingAccount} onValueChange={setFilterBillingAccount}>
+            <SelectTrigger className="w-48" data-testid="select-filter-billing-account">
+              <SelectValue placeholder="請求先" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">請求先: すべて</SelectItem>
+              <SelectItem value="none">未設定</SelectItem>
+              {filterBillingAccountsForPm.map(b => (
+                <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {availableCurrencies.length > 1 && (
+          <Select value={filterCurrency} onValueChange={setFilterCurrency}>
+            <SelectTrigger className="w-32" data-testid="select-filter-currency">
+              <SelectValue placeholder="通貨" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">通貨: すべて</SelectItem>
+              {availableCurrencies.map(c => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className="w-36" data-testid="select-filter-status">
+            <SelectValue placeholder="ステータス" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">ステータス: すべて</SelectItem>
+            <SelectItem value="1">有効</SelectItem>
+            <SelectItem value="0">停止中</SelectItem>
           </SelectContent>
         </Select>
       </div>

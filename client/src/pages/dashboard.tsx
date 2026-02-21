@@ -46,17 +46,6 @@ function monthlyJpy(sub: Subscription, rates: ExchangeRate[]): number {
   return sub.amount * rate * toMonthlyMultiplier(sub.billingCycle);
 }
 
-const unitLabels: Record<string, string> = {
-  days: "日", weeks: "週", months: "ヶ月", years: "年",
-};
-
-function getCycleDisplayLabel(cycle: string): string {
-  if (cycle === "monthly") return "月額";
-  if (cycle === "annual") return "年額";
-  const match = cycle.match(/^(\d+)_(days|weeks|months|years)$/);
-  if (match) return `${match[1]}${unitLabels[match[2]] || match[2]}ごと`;
-  return cycle;
-}
 
 type PaymentMethodSummary = PaymentMethod & {
   count: number;
@@ -380,37 +369,6 @@ export default function Dashboard() {
         )}
       </div>
 
-      {activeSubs.length > 0 && (
-        <div>
-          <h2 className="text-lg font-semibold mb-3">サブスクリプション一覧</h2>
-          <div className="space-y-2">
-            {activeSubs.map(sub => {
-              const cat = categories?.find(c => c.id === sub.categoryId);
-              const amtJpy = sub.amount * getRate(sub.currency, rates);
-              return (
-                <Card key={sub.id} className="hover-elevate">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2 min-w-0">
-                        {cat && <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />}
-                        <span className="font-medium" data-testid={`text-sub-name-${sub.id}`}>{sub.serviceName}</span>
-                        {sub.planName && <span className="text-sm text-muted-foreground">({sub.planName})</span>}
-                        <Badge variant="outline" className="text-xs">{getCycleDisplayLabel(sub.billingCycle)}</Badge>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        {sub.currency !== "JPY" && (
-                          <span className="text-sm text-muted-foreground">{formatCurrency(sub.amount, sub.currency)}</span>
-                        )}
-                        <span className="font-bold" data-testid={`text-sub-jpy-${sub.id}`}>{formatJpy(amtJpy)}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
