@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCategorySchema, insertPaymentMethodSchema, insertBillingAccountSchema, insertSubscriptionSchema, insertExchangeRateSchema } from "@shared/schema";
+import { insertCategorySchema, insertPaymentMethodSchema, insertBillingAccountSchema, insertSubscriptionSchema, insertExchangeRateSchema, insertServiceGroupSchema } from "@shared/schema";
 import { isAuthenticated } from "./replit_integrations/auth";
 
 export async function registerRoutes(
@@ -127,6 +127,27 @@ export async function registerRoutes(
     } catch (e: any) {
       res.status(500).json({ message: e.message || "為替レート取得中にエラーが発生しました" });
     }
+  });
+
+  app.get("/api/service-groups", isAuthenticated, async (_req, res) => {
+    const data = await storage.getServiceGroups();
+    res.json(data);
+  });
+  app.post("/api/service-groups", isAuthenticated, async (req, res) => {
+    const parsed = insertServiceGroupSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const row = await storage.createServiceGroup(parsed.data);
+    res.status(201).json(row);
+  });
+  app.patch("/api/service-groups/:id", isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const row = await storage.updateServiceGroup(id, req.body);
+    if (!row) return res.status(404).json({ message: "Not found" });
+    res.json(row);
+  });
+  app.delete("/api/service-groups/:id", isAuthenticated, async (req, res) => {
+    await storage.deleteServiceGroup(parseInt(req.params.id));
+    res.status(204).send();
   });
 
   app.get("/api/subscriptions", isAuthenticated, async (_req, res) => {

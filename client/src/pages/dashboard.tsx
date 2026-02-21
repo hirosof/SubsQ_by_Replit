@@ -2,11 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, Layers, Wallet, CreditCard, ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { TrendingUp, Layers, Wallet, CreditCard, ChevronDown, ChevronRight, ExternalLink, Group } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useState } from "react";
 import { useLocation } from "wouter";
-import type { Subscription, Category, ExchangeRate, PaymentMethod, BillingAccount } from "@shared/schema";
+import type { Subscription, Category, ExchangeRate, PaymentMethod, BillingAccount, ServiceGroup } from "@shared/schema";
 import { getCurrencyLabel } from "@/lib/currency";
 
 function formatJpy(amount: number): string {
@@ -167,8 +167,11 @@ export default function Dashboard() {
   const { data: billingAccounts, isLoading: baLoading } = useQuery<BillingAccount[]>({
     queryKey: ["/api/billing-accounts"],
   });
+  const { data: serviceGroups, isLoading: sgLoading } = useQuery<ServiceGroup[]>({
+    queryKey: ["/api/service-groups"],
+  });
 
-  const isLoading = subsLoading || catsLoading || ratesLoading || pmLoading || baLoading;
+  const isLoading = subsLoading || catsLoading || ratesLoading || pmLoading || baLoading || sgLoading;
   const rates = exchangeRates || [];
   const activeSubs = subscriptions?.filter(s => s.isActive === 1) || [];
 
@@ -210,6 +213,15 @@ export default function Dashboard() {
 
   const noPaymentMethodSubs = activeSubs.filter(s => !s.paymentMethodId);
   const noPaymentMethodMonthly = noPaymentMethodSubs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
+
+  const serviceGroupSummary = (serviceGroups || []).map(sg => {
+    const subs = activeSubs.filter(s => s.serviceGroupId === sg.id);
+    const monthly = subs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
+    return { ...sg, count: subs.length, monthlyJpy: monthly };
+  }).filter(g => g.count > 0);
+
+  const noGroupSubs = activeSubs.filter(s => !s.serviceGroupId);
+  const noGroupMonthly = noGroupSubs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
 
   const missingRates = activeSubs
     .filter(s => s.currency !== "JPY" && getRate(s.currency, rates) === 0)
@@ -407,6 +419,60 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {(serviceGroupSummary.length > 0 || noGroupSubs.length > 0) && (serviceGroups?.length || 0) > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold mb-3">サービスグループ別コスト</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {serviceGroupSummary.map(sg => (
+              <Card key={sg.id} className="hover-elevate cursor-pointer" onClick={() => navigate(`/subscriptions?serviceGroup=${sg.id}`)} data-testid={`card-service-group-${sg.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Group className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <span className="font-medium truncate" data-testid={`text-sg-name-${sg.id}`}>{sg.name}</span>
+                      <Badge variant="secondary" className="text-xs">{sg.count}件</Badge>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="font-bold whitespace-nowrap" data-testid={`text-sg-cost-${sg.id}`}>{formatJpy(sg.monthlyJpy)}/月</span>
+                      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                  </div>
+                  <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${totalMonthlyJpy > 0 ? (sg.monthlyJpy / totalMonthlyJpy) * 100 : 0}%` }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            {noGroupSubs.length > 0 && (
+              <Card className="hover-elevate cursor-pointer" onClick={() => navigate(`/subscriptions?serviceGroup=none`)} data-testid="card-sg-unset">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Group className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
+                      <span className="font-medium truncate text-muted-foreground">未設定</span>
+                      <Badge variant="secondary" className="text-xs">{noGroupSubs.length}件</Badge>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="font-bold whitespace-nowrap">{formatJpy(noGroupMonthly)}/月</span>
+                      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                  </div>
+                  <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-muted-foreground/30 transition-all"
+                      style={{ width: `${totalMonthlyJpy > 0 ? (noGroupMonthly / totalMonthlyJpy) * 100 : 0}%` }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );

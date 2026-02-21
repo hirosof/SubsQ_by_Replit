@@ -10,7 +10,7 @@ import {
   SidebarMenuItem,
   SidebarHeader,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, Package, FolderOpen, CreditCard, ArrowRightLeft, LogOut } from "lucide-react";
+import { LayoutDashboard, Package, FolderOpen, CreditCard, ArrowRightLeft, LogOut, Group } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -20,6 +20,7 @@ const navItems = [
   { title: "サブスクリプション", url: "/subscriptions", icon: Package },
   { title: "カテゴリ", url: "/categories", icon: FolderOpen },
   { title: "支払い方法", url: "/payment-methods", icon: CreditCard },
+  { title: "サービスグループ", url: "/service-groups", icon: Group },
   { title: "為替レート", url: "/exchange-rates", icon: ArrowRightLeft },
 ];
 

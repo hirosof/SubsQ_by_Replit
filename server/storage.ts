@@ -4,6 +4,7 @@ import {
   billingAccounts, type BillingAccount, type InsertBillingAccount,
   subscriptions, type Subscription, type InsertSubscription,
   exchangeRates, type ExchangeRate, type InsertExchangeRate,
+  serviceGroups, type ServiceGroup, type InsertServiceGroup,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
@@ -33,6 +34,12 @@ export interface IStorage {
   createExchangeRate(data: InsertExchangeRate): Promise<ExchangeRate>;
   updateExchangeRate(id: number, data: Partial<InsertExchangeRate>): Promise<ExchangeRate | undefined>;
   deleteExchangeRate(id: number): Promise<void>;
+
+  getServiceGroups(): Promise<ServiceGroup[]>;
+  getServiceGroup(id: number): Promise<ServiceGroup | undefined>;
+  createServiceGroup(data: InsertServiceGroup): Promise<ServiceGroup>;
+  updateServiceGroup(id: number, data: Partial<InsertServiceGroup>): Promise<ServiceGroup | undefined>;
+  deleteServiceGroup(id: number): Promise<void>;
 
   getSubscriptions(): Promise<Subscription[]>;
   getSubscription(id: number): Promise<Subscription | undefined>;
@@ -120,6 +127,25 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteExchangeRate(id: number): Promise<void> {
     await db.delete(exchangeRates).where(eq(exchangeRates.id, id));
+  }
+
+  async getServiceGroups(): Promise<ServiceGroup[]> {
+    return db.select().from(serviceGroups);
+  }
+  async getServiceGroup(id: number): Promise<ServiceGroup | undefined> {
+    const [row] = await db.select().from(serviceGroups).where(eq(serviceGroups.id, id));
+    return row || undefined;
+  }
+  async createServiceGroup(data: InsertServiceGroup): Promise<ServiceGroup> {
+    const [row] = await db.insert(serviceGroups).values(data).returning();
+    return row;
+  }
+  async updateServiceGroup(id: number, data: Partial<InsertServiceGroup>): Promise<ServiceGroup | undefined> {
+    const [row] = await db.update(serviceGroups).set(data).where(eq(serviceGroups.id, id)).returning();
+    return row || undefined;
+  }
+  async deleteServiceGroup(id: number): Promise<void> {
+    await db.delete(serviceGroups).where(eq(serviceGroups.id, id));
   }
 
   async getSubscriptions(): Promise<Subscription[]> {

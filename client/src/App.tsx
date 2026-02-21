@@ -13,6 +13,7 @@ import Subscriptions from "@/pages/subscriptions";
 import Categories from "@/pages/categories";
 import PaymentMethods from "@/pages/payment-methods";
 import ExchangeRates from "@/pages/exchange-rates";
+import ServiceGroups from "@/pages/service-groups";
 import Login from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
@@ -25,6 +26,7 @@ function Router() {
       <Route path="/categories" component={Categories} />
       <Route path="/payment-methods" component={PaymentMethods} />
       <Route path="/exchange-rates" component={ExchangeRates} />
+      <Route path="/service-groups" component={ServiceGroups} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Filter, PackageOpen, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import type { Subscription, Category, PaymentMethod, BillingAccount, ExchangeRate } from "@shared/schema";
+import type { Subscription, Category, PaymentMethod, BillingAccount, ExchangeRate, ServiceGroup } from "@shared/schema";
 import { getCurrencyLabel } from "@/lib/currency";
 
 type SortKey = "name" | "cycleAmount" | "monthly" | "annual";
@@ -111,13 +111,14 @@ interface FormData {
   categoryId: string;
   paymentMethodId: string;
   billingAccountId: string;
+  serviceGroupId: string;
   note: string;
   isActive: number;
 }
 
 const defaultForm: FormData = {
   serviceName: "", planName: "", amount: "", currency: "JPY",
-  billingCycle: "monthly", customCycleNumber: "", customCycleUnit: "months", categoryId: "none", paymentMethodId: "none", billingAccountId: "none", note: "", isActive: 1,
+  billingCycle: "monthly", customCycleNumber: "", customCycleUnit: "months", categoryId: "none", paymentMethodId: "none", billingAccountId: "none", serviceGroupId: "none", note: "", isActive: 1,
 };
 
 export default function Subscriptions() {
@@ -127,6 +128,7 @@ export default function Subscriptions() {
   const [filterCategory, setFilterCategory] = useState<string>(searchParams.get("category") || "all");
   const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>(searchParams.get("paymentMethod") || "all");
   const [filterBillingAccount, setFilterBillingAccount] = useState<string>(searchParams.get("billingAccount") || "all");
+  const [filterServiceGroup, setFilterServiceGroup] = useState<string>(searchParams.get("serviceGroup") || "all");
   const [filterCurrency, setFilterCurrency] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [sortKey, setSortKey] = useState<SortKey>("monthly");
@@ -140,6 +142,7 @@ export default function Subscriptions() {
   const { data: categories } = useQuery<Category[]>({ queryKey: ["/api/categories"] });
   const { data: paymentMethods } = useQuery<PaymentMethod[]>({ queryKey: ["/api/payment-methods"] });
   const { data: billingAccounts } = useQuery<BillingAccount[]>({ queryKey: ["/api/billing-accounts"] });
+  const { data: serviceGroups } = useQuery<ServiceGroup[]>({ queryKey: ["/api/service-groups"] });
   const { data: exchangeRates } = useQuery<ExchangeRate[]>({ queryKey: ["/api/exchange-rates"] });
 
   const rates = exchangeRates || [];
@@ -193,6 +196,7 @@ export default function Subscriptions() {
       categoryId: sub.categoryId ? String(sub.categoryId) : "none",
       paymentMethodId: sub.paymentMethodId ? String(sub.paymentMethodId) : "none",
       billingAccountId: sub.billingAccountId ? String(sub.billingAccountId) : "none",
+      serviceGroupId: sub.serviceGroupId ? String(sub.serviceGroupId) : "none",
       note: sub.note || "",
       isActive: sub.isActive,
     });
@@ -223,6 +227,7 @@ export default function Subscriptions() {
       categoryId: form.categoryId && form.categoryId !== "none" ? parseInt(form.categoryId) : null,
       paymentMethodId: form.paymentMethodId && form.paymentMethodId !== "none" ? parseInt(form.paymentMethodId) : null,
       billingAccountId: form.billingAccountId && form.billingAccountId !== "none" ? parseInt(form.billingAccountId) : null,
+      serviceGroupId: form.serviceGroupId && form.serviceGroupId !== "none" ? parseInt(form.serviceGroupId) : null,
       note: form.note || null,
       isActive: form.isActive,
     };
@@ -248,6 +253,9 @@ export default function Subscriptions() {
     }
     if (filterBillingAccount !== "all") {
       if (filterBillingAccount === "none" ? s.billingAccountId : s.billingAccountId !== parseInt(filterBillingAccount)) return false;
+    }
+    if (filterServiceGroup !== "all") {
+      if (filterServiceGroup === "none" ? s.serviceGroupId : s.serviceGroupId !== parseInt(filterServiceGroup)) return false;
     }
     if (filterCurrency !== "all" && s.currency !== filterCurrency) return false;
     if (filterStatus !== "all" && s.isActive !== parseInt(filterStatus)) return false;
@@ -360,6 +368,20 @@ export default function Subscriptions() {
             </SelectContent>
           </Select>
         )}
+        {(serviceGroups?.length || 0) > 0 && (
+          <Select value={filterServiceGroup} onValueChange={setFilterServiceGroup}>
+            <SelectTrigger className="w-44" data-testid="select-filter-service-group">
+              <SelectValue placeholder="グループ" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">グループ: すべて</SelectItem>
+              <SelectItem value="none">未設定</SelectItem>
+              {serviceGroups?.map(g => (
+                <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         {availableCurrencies.length > 1 && (
           <Select value={filterCurrency} onValueChange={setFilterCurrency}>
             <SelectTrigger className="w-32" data-testid="select-filter-currency">
@@ -429,6 +451,7 @@ export default function Subscriptions() {
                       const cat = categories?.find(c => c.id === sub.categoryId);
                       const pm = paymentMethods?.find(p => p.id === sub.paymentMethodId);
                       const ba = billingAccounts?.find(b => b.id === sub.billingAccountId);
+                      const sg = serviceGroups?.find(g => g.id === sub.serviceGroupId);
                       const mJpy = monthlyJpy(sub, rates);
                       const aJpy = annualJpy(sub, rates);
                       return (
@@ -443,6 +466,7 @@ export default function Subscriptions() {
                             <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
                               {cat && <span>{cat.name}</span>}
                               {pm && <span className="flex items-center gap-1"><CreditCardIcon />{pm.name}{ba ? ` / ${ba.name}` : ""}</span>}
+                              {sg && <Badge variant="outline" className="text-xs">{sg.name}</Badge>}
                               {sub.note && <span className="truncate max-w-[180px]">{sub.note}</span>}
                             </div>
                           </td>
@@ -495,6 +519,7 @@ export default function Subscriptions() {
               const cat = categories?.find(c => c.id === sub.categoryId);
               const pm = paymentMethods?.find(p => p.id === sub.paymentMethodId);
               const ba = billingAccounts?.find(b => b.id === sub.billingAccountId);
+              const sg = serviceGroups?.find(g => g.id === sub.serviceGroupId);
               const mJpy = monthlyJpy(sub, rates);
               const aJpy = annualJpy(sub, rates);
               return (
@@ -511,6 +536,7 @@ export default function Subscriptions() {
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
                           {cat && <span>{cat.name}</span>}
                           {pm && <span className="flex items-center gap-1"><CreditCardIcon />{pm.name}{ba ? ` / ${ba.name}` : ""}</span>}
+                          {sg && <Badge variant="outline" className="text-xs">{sg.name}</Badge>}
                         </div>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
@@ -642,6 +668,18 @@ export default function Subscriptions() {
                   <SelectContent>
                     <SelectItem value="none">なし</SelectItem>
                     {filteredBillingAccounts.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {(serviceGroups?.length || 0) > 0 && (
+              <div className="space-y-2">
+                <Label>サービスグループ</Label>
+                <Select value={form.serviceGroupId} onValueChange={v => setForm({ ...form, serviceGroupId: v })}>
+                  <SelectTrigger data-testid="select-service-group"><SelectValue placeholder="選択なし" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">なし</SelectItem>
+                    {serviceGroups?.map(g => <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
