@@ -2,8 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, Layers, Wallet } from "lucide-react";
-import type { Subscription, Category, ExchangeRate } from "@shared/schema";
+import { TrendingUp, Layers, Wallet, CreditCard, ChevronDown, ChevronRight } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { useState } from "react";
+import type { Subscription, Category, ExchangeRate, PaymentMethod, BillingAccount } from "@shared/schema";
 
 function formatJpy(amount: number): string {
   return new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY", maximumFractionDigits: 0 }).format(amount);
@@ -56,6 +58,82 @@ function getCycleDisplayLabel(cycle: string): string {
   return cycle;
 }
 
+type PaymentMethodSummary = PaymentMethod & {
+  count: number;
+  monthlyJpy: number;
+  billingBreakdown: (BillingAccount & { count: number; monthlyJpy: number })[];
+  unassignedCount: number;
+  unassignedMonthly: number;
+};
+
+function PaymentMethodCard({ pm, totalMonthlyJpy, hasBillingBreakdown }: { pm: PaymentMethodSummary; totalMonthlyJpy: number; hasBillingBreakdown: boolean }) {
+  const [open, setOpen] = useState(false);
+
+  const cardContent = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {hasBillingBreakdown && (
+            open ? <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          )}
+          <CreditCard className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          <span className="font-medium truncate" data-testid={`text-pm-name-${pm.id}`}>{pm.name}</span>
+          <Badge variant="secondary" className="text-xs">{pm.count}件</Badge>
+        </div>
+        <span className="font-bold whitespace-nowrap" data-testid={`text-pm-cost-${pm.id}`}>{formatJpy(pm.monthlyJpy)}/月</span>
+      </div>
+      <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full bg-primary transition-all"
+          style={{ width: `${totalMonthlyJpy > 0 ? (pm.monthlyJpy / totalMonthlyJpy) * 100 : 0}%` }}
+        />
+      </div>
+    </>
+  );
+
+  if (!hasBillingBreakdown) {
+    return (
+      <Card className="hover-elevate">
+        <CardContent className="p-4">{cardContent}</CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card className="hover-elevate">
+        <CardContent className="p-4">
+          <CollapsibleTrigger asChild>
+            <button className="w-full text-left cursor-pointer" data-testid={`btn-pm-expand-${pm.id}`}>{cardContent}</button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="mt-3 pl-6 space-y-2 border-l-2 border-muted ml-2">
+              {pm.billingBreakdown.map(ba => (
+                <div key={ba.id} className="flex items-center justify-between gap-2 text-sm" data-testid={`row-ba-${ba.id}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="truncate text-muted-foreground" data-testid={`text-ba-name-${ba.id}`}>{ba.name}</span>
+                    <Badge variant="outline" className="text-xs">{ba.count}件</Badge>
+                  </div>
+                  <span className="font-semibold whitespace-nowrap" data-testid={`text-ba-cost-${ba.id}`}>{formatJpy(ba.monthlyJpy)}/月</span>
+                </div>
+              ))}
+              {pm.unassignedCount > 0 && (
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="truncate text-muted-foreground">請求先未設定</span>
+                    <Badge variant="outline" className="text-xs">{pm.unassignedCount}件</Badge>
+                  </div>
+                  <span className="font-semibold whitespace-nowrap">{formatJpy(pm.unassignedMonthly)}/月</span>
+                </div>
+              )}
+            </div>
+          </CollapsibleContent>
+        </CardContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
 export default function Dashboard() {
   const { data: subscriptions, isLoading: subsLoading } = useQuery<Subscription[]>({
     queryKey: ["/api/subscriptions"],
@@ -66,8 +144,14 @@ export default function Dashboard() {
   const { data: exchangeRates, isLoading: ratesLoading } = useQuery<ExchangeRate[]>({
     queryKey: ["/api/exchange-rates"],
   });
+  const { data: paymentMethods, isLoading: pmLoading } = useQuery<PaymentMethod[]>({
+    queryKey: ["/api/payment-methods"],
+  });
+  const { data: billingAccounts, isLoading: baLoading } = useQuery<BillingAccount[]>({
+    queryKey: ["/api/billing-accounts"],
+  });
 
-  const isLoading = subsLoading || catsLoading || ratesLoading;
+  const isLoading = subsLoading || catsLoading || ratesLoading || pmLoading || baLoading;
   const rates = exchangeRates || [];
   const activeSubs = subscriptions?.filter(s => s.isActive === 1) || [];
 
@@ -92,6 +176,23 @@ export default function Dashboard() {
     currencyBreakdown[s.currency].total += monthlyOriginal;
     currencyBreakdown[s.currency].monthlyJpy += monthlyJpy(s, rates);
   });
+
+  const paymentMethodSummary = (paymentMethods || []).map(pm => {
+    const subs = activeSubs.filter(s => s.paymentMethodId === pm.id);
+    const monthly = subs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
+    const pmBillingAccounts = (billingAccounts || []).filter(ba => ba.paymentMethodId === pm.id);
+    const billingBreakdown = pmBillingAccounts.map(ba => {
+      const baSubs = subs.filter(s => s.billingAccountId === ba.id);
+      const baMonthly = baSubs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
+      return { ...ba, count: baSubs.length, monthlyJpy: baMonthly };
+    }).filter(b => b.count > 0);
+    const unassignedSubs = subs.filter(s => !s.billingAccountId);
+    const unassignedMonthly = unassignedSubs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
+    return { ...pm, count: subs.length, monthlyJpy: monthly, billingBreakdown, unassignedCount: unassignedSubs.length, unassignedMonthly };
+  }).filter(pm => pm.count > 0);
+
+  const noPaymentMethodSubs = activeSubs.filter(s => !s.paymentMethodId);
+  const noPaymentMethodMonthly = noPaymentMethodSubs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
 
   const missingRates = activeSubs
     .filter(s => s.currency !== "JPY" && getRate(s.currency, rates) === 0)
@@ -224,6 +325,52 @@ export default function Dashboard() {
                     <div
                       className="h-full rounded-full bg-muted-foreground/30 transition-all"
                       style={{ width: `${totalMonthlyJpy > 0 ? (uncategorizedMonthly / totalMonthlyJpy) * 100 : 0}%` }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h2 className="text-lg font-semibold mb-3">支払い方法別コスト</h2>
+        {paymentMethodSummary.length === 0 && noPaymentMethodSubs.length === 0 ? (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              <CreditCard className="h-10 w-10 mx-auto mb-2 opacity-40" />
+              <p>サブスクリプションを追加すると支払い方法別の内訳が表示されます</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {paymentMethodSummary.map(pm => {
+              const hasBillingBreakdown = pm.billingBreakdown.length > 0 || pm.unassignedCount > 0;
+              return (
+                <PaymentMethodCard
+                  key={pm.id}
+                  pm={pm}
+                  totalMonthlyJpy={totalMonthlyJpy}
+                  hasBillingBreakdown={hasBillingBreakdown}
+                />
+              );
+            })}
+            {noPaymentMethodSubs.length > 0 && (
+              <Card className="hover-elevate">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CreditCard className="h-4 w-4 text-muted-foreground/50 flex-shrink-0" />
+                      <span className="font-medium truncate text-muted-foreground">未設定</span>
+                      <Badge variant="secondary" className="text-xs">{noPaymentMethodSubs.length}件</Badge>
+                    </div>
+                    <span className="font-bold whitespace-nowrap">{formatJpy(noPaymentMethodMonthly)}/月</span>
+                  </div>
+                  <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-muted-foreground/30 transition-all"
+                      style={{ width: `${totalMonthlyJpy > 0 ? (noPaymentMethodMonthly / totalMonthlyJpy) * 100 : 0}%` }}
                     />
                   </div>
                 </CardContent>
