@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, ArrowRightLeft, Coins } from "lucide-react";
+import { Plus, Pencil, Trash2, ArrowRightLeft, Coins, RefreshCw } from "lucide-react";
 import type { ExchangeRate } from "@shared/schema";
 import { getCurrencyLabel, getCurrencyInfo } from "@/lib/currency";
 
@@ -59,6 +59,15 @@ export default function ExchangeRates() {
       toast({ title: "為替レートを削除しました" });
     },
     onError: (e: Error) => toast({ title: "エラー", description: e.message, variant: "destructive" }),
+  });
+  const fetchMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/exchange-rates/fetch").then(r => r.json()),
+    onSuccess: (data: { count: number; skipped?: string[] }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/exchange-rates"] });
+      const desc = data.skipped?.length ? `取得できなかった通貨: ${data.skipped.join(", ")}` : undefined;
+      toast({ title: `${data.count}件のレートをAPIから更新しました`, description: desc });
+    },
+    onError: (e: Error) => toast({ title: "API取得エラー", description: e.message, variant: "destructive" }),
   });
 
   const openCreate = () => {
@@ -112,10 +121,16 @@ export default function ExchangeRates() {
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-exchange-rates-title">為替レート</h1>
           <p className="text-muted-foreground text-sm mt-1">各通貨の日本円換算レートを管理します</p>
         </div>
-        <Button onClick={openCreate} data-testid="button-add-rate">
-          <Plus className="h-4 w-4 mr-1" />
-          追加
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" onClick={() => fetchMutation.mutate()} disabled={fetchMutation.isPending || !exchangeRates?.length} data-testid="button-fetch-rates">
+            <RefreshCw className={`h-4 w-4 mr-1 ${fetchMutation.isPending ? "animate-spin" : ""}`} />
+            {fetchMutation.isPending ? "取得中..." : "APIから一括更新"}
+          </Button>
+          <Button onClick={openCreate} data-testid="button-add-rate">
+            <Plus className="h-4 w-4 mr-1" />
+            追加
+          </Button>
+        </div>
       </div>
 
       <Card className="border-muted bg-muted/20">

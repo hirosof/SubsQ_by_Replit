@@ -95,6 +95,40 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  app.post("/api/exchange-rates/fetch", isAuthenticated, async (_req, res) => {
+    const apiKey = process.env.ExchangeRate_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ message: "ExchangeRate API キーが設定されていません" });
+    }
+    try {
+      const response = await fetch(`https://v6.exchangerate-api.com/v6/${apiKey}/latest/JPY`);
+      if (!response.ok) {
+        return res.status(502).json({ message: "為替レートAPIの呼び出しに失敗しました" });
+      }
+      const data = await response.json() as { result: string; conversion_rates?: Record<string, number> };
+      if (data.result !== "success" || !data.conversion_rates) {
+        return res.status(502).json({ message: "為替レートAPIからの応答が不正です" });
+      }
+      const jpyRates = data.conversion_rates;
+      const existingRates = await storage.getExchangeRates();
+      const updated: { currency: string; rateToJpy: number }[] = [];
+      const skipped: string[] = [];
+      for (const rate of existingRates) {
+        const jpyToForeign = jpyRates[rate.currency];
+        if (jpyToForeign && jpyToForeign > 0) {
+          const rateToJpy = 1 / jpyToForeign;
+          await storage.updateExchangeRate(rate.id, { rateToJpy });
+          updated.push({ currency: rate.currency, rateToJpy });
+        } else {
+          skipped.push(rate.currency);
+        }
+      }
+      res.json({ updated, count: updated.length, skipped });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "為替レート取得中にエラーが発生しました" });
+    }
+  });
+
   app.get("/api/subscriptions", isAuthenticated, async (_req, res) => {
     const data = await storage.getSubscriptions();
     res.json(data);
