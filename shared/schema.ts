@@ -1,3 +1,4 @@
+export * from "./models/auth";
 import { sql, relations } from "drizzle-orm";
 import { pgTable, text, varchar, integer, real, serial } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";

@@ -10,7 +10,10 @@ import {
   SidebarMenuItem,
   SidebarHeader,
 } from "@/components/ui/sidebar";
-import { LayoutDashboard, Package, FolderOpen, CreditCard, ArrowRightLeft } from "lucide-react";
+import { LayoutDashboard, Package, FolderOpen, CreditCard, ArrowRightLeft, LogOut } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const navItems = [
   { title: "ダッシュボード", url: "/", icon: LayoutDashboard },
@@ -22,6 +25,7 @@ const navItems = [
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const { user } = useAuth();
 
   return (
     <Sidebar>
@@ -59,6 +63,24 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <div className="mt-auto p-3 border-t">
+        <div className="flex items-center gap-2">
+          <Avatar className="h-7 w-7">
+            <AvatarImage src={user?.profileImageUrl || undefined} />
+            <AvatarFallback className="text-xs">
+              {user?.firstName?.[0] || user?.email?.[0] || "U"}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0 text-xs">
+            <p className="font-medium truncate">{user?.firstName || user?.email || "ユーザー"}</p>
+          </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" asChild>
+            <a href="/api/logout" title="ログアウト">
+              <LogOut className="h-3.5 w-3.5" />
+            </a>
+          </Button>
+        </div>
+      </div>
     </Sidebar>
   );
 }
