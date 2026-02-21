@@ -9,9 +9,83 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, FolderOpen, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, Pencil, Trash2, FolderOpen, GripVertical, ArrowUpDown, Check } from "lucide-react";
 import type { Category } from "@shared/schema";
 import { ColorPicker, colorPresets } from "@/components/color-picker";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+
+function SortableItem({ cat, reorderMode, onEdit, onDelete }: {
+  cat: Category;
+  reorderMode: boolean;
+  onEdit: (cat: Category) => void;
+  onDelete: (cat: Category) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: cat.id, disabled: !reorderMode });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <Card className={reorderMode ? "" : "hover-elevate"}>
+        <CardContent className="p-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            {reorderMode && (
+              <button
+                {...attributes}
+                {...listeners}
+                className="touch-none p-1 rounded hover:bg-muted cursor-grab active:cursor-grabbing"
+                data-testid={`button-drag-cat-${cat.id}`}
+              >
+                <GripVertical className="h-4 w-4 text-muted-foreground" />
+              </button>
+            )}
+            <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
+            <span className="font-medium" data-testid={`text-cat-name-${cat.id}`}>{cat.name}</span>
+          </div>
+          {!reorderMode && (
+            <div className="flex items-center gap-1">
+              <Button size="icon" variant="ghost" onClick={() => onEdit(cat)} data-testid={`button-edit-cat-${cat.id}`}>
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => onDelete(cat)} data-testid={`button-delete-cat-${cat.id}`}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 export default function Categories() {
   const { toast } = useToast();
@@ -20,8 +94,15 @@ export default function Categories() {
   const [name, setName] = useState("");
   const [color, setColor] = useState(colorPresets[0]);
   const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
+  const [reorderMode, setReorderMode] = useState(false);
 
   const { data: categories, isLoading } = useQuery<Category[]>({ queryKey: ["/api/categories"] });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/categories", data),
@@ -85,13 +166,14 @@ export default function Categories() {
     }
   };
 
-  const moveItem = (index: number, direction: "up" | "down") => {
-    if (!categories) return;
-    const ids = categories.map(c => c.id);
-    const swapIdx = direction === "up" ? index - 1 : index + 1;
-    if (swapIdx < 0 || swapIdx >= ids.length) return;
-    [ids[index], ids[swapIdx]] = [ids[swapIdx], ids[index]];
-    reorderMutation.mutate(ids);
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !categories) return;
+    const oldIndex = categories.findIndex(c => c.id === active.id);
+    const newIndex = categories.findIndex(c => c.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const newOrder = arrayMove(categories, oldIndex, newIndex);
+    reorderMutation.mutate(newOrder.map(c => c.id));
   };
 
   if (isLoading) {
@@ -110,10 +192,24 @@ export default function Categories() {
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-categories-title">カテゴリ</h1>
           <p className="text-muted-foreground text-sm mt-1">サブスクリプションを分類するカテゴリを管理します</p>
         </div>
-        <Button onClick={openCreate} data-testid="button-add-category">
-          <Plus className="h-4 w-4 mr-1" />
-          追加
-        </Button>
+        <div className="flex items-center gap-2">
+          {(categories?.length || 0) > 1 && (
+            <Button
+              variant={reorderMode ? "default" : "outline"}
+              size="sm"
+              onClick={() => setReorderMode(!reorderMode)}
+              data-testid="button-toggle-reorder-categories"
+            >
+              {reorderMode ? <><Check className="h-4 w-4 mr-1" />完了</> : <><ArrowUpDown className="h-4 w-4 mr-1" />並び替え</>}
+            </Button>
+          )}
+          {!reorderMode && (
+            <Button onClick={openCreate} data-testid="button-add-category">
+              <Plus className="h-4 w-4 mr-1" />
+              追加
+            </Button>
+          )}
+        </div>
       </div>
 
       {categories?.length === 0 ? (
@@ -125,44 +221,21 @@ export default function Categories() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
-          {categories?.map((cat, idx) => (
-            <Card key={cat.id} className="hover-elevate">
-              <CardContent className="p-4 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex flex-col gap-0.5">
-                    <button
-                      onClick={() => moveItem(idx, "up")}
-                      disabled={idx === 0 || reorderMutation.isPending}
-                      className="p-0.5 rounded hover:bg-muted disabled:opacity-20 disabled:cursor-default"
-                      data-testid={`button-move-up-cat-${cat.id}`}
-                    >
-                      <ChevronUp className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => moveItem(idx, "down")}
-                      disabled={idx === (categories?.length || 0) - 1 || reorderMutation.isPending}
-                      className="p-0.5 rounded hover:bg-muted disabled:opacity-20 disabled:cursor-default"
-                      data-testid={`button-move-down-cat-${cat.id}`}
-                    >
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
-                  <span className="font-medium" data-testid={`text-cat-name-${cat.id}`}>{cat.name}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button size="icon" variant="ghost" onClick={() => openEdit(cat)} data-testid={`button-edit-cat-${cat.id}`}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button size="icon" variant="ghost" onClick={() => setDeleteTarget(cat)} data-testid={`button-delete-cat-${cat.id}`}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={categories?.map(c => c.id) || []} strategy={verticalListSortingStrategy}>
+            <div className="space-y-2">
+              {categories?.map(cat => (
+                <SortableItem
+                  key={cat.id}
+                  cat={cat}
+                  reorderMode={reorderMode}
+                  onEdit={openEdit}
+                  onDelete={setDeleteTarget}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
