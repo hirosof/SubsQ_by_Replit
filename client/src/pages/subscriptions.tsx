@@ -95,8 +95,10 @@ const defaultForm: FormData = {
 
 export default function Subscriptions() {
   const { toast } = useToast();
-  const [filterCategory, setFilterCategory] = useState<string>("all");
-  const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>("all");
+  const searchParams = new URLSearchParams(window.location.search);
+
+  const [filterCategory, setFilterCategory] = useState<string>(searchParams.get("category") || "all");
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>(searchParams.get("paymentMethod") || "all");
   const [filterBillingAccount, setFilterBillingAccount] = useState<string>("all");
   const [filterCurrency, setFilterCurrency] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");

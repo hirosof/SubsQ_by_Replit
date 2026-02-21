@@ -2,9 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, Layers, Wallet, CreditCard, ChevronDown, ChevronRight } from "lucide-react";
+import { TrendingUp, Layers, Wallet, CreditCard, ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useState } from "react";
+import { useLocation } from "wouter";
 import type { Subscription, Category, ExchangeRate, PaymentMethod, BillingAccount } from "@shared/schema";
 import { getCurrencyLabel } from "@/lib/currency";
 
@@ -56,7 +57,7 @@ type PaymentMethodSummary = PaymentMethod & {
   unassignedMonthly: number;
 };
 
-function PaymentMethodCard({ pm, totalMonthlyJpy, hasBillingBreakdown }: { pm: PaymentMethodSummary; totalMonthlyJpy: number; hasBillingBreakdown: boolean }) {
+function PaymentMethodCard({ pm, totalMonthlyJpy, hasBillingBreakdown, onNavigate }: { pm: PaymentMethodSummary; totalMonthlyJpy: number; hasBillingBreakdown: boolean; onNavigate: () => void }) {
   const [open, setOpen] = useState(false);
 
   const cardContent = (
@@ -70,7 +71,18 @@ function PaymentMethodCard({ pm, totalMonthlyJpy, hasBillingBreakdown }: { pm: P
           <span className="font-medium truncate" data-testid={`text-pm-name-${pm.id}`}>{pm.name}</span>
           <Badge variant="secondary" className="text-xs">{pm.count}件</Badge>
         </div>
-        <span className="font-bold whitespace-nowrap" data-testid={`text-pm-cost-${pm.id}`}>{formatJpy(pm.monthlyJpy)}/月</span>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="font-bold whitespace-nowrap" data-testid={`text-pm-cost-${pm.id}`}>{formatJpy(pm.monthlyJpy)}/月</span>
+          <span
+            role="link"
+            onClick={(e) => { e.stopPropagation(); onNavigate(); }}
+            className="p-1 rounded hover:bg-muted transition-colors cursor-pointer"
+            title="サブスク一覧を表示"
+            data-testid={`link-pm-subs-${pm.id}`}
+          >
+            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+          </span>
+        </div>
       </div>
       <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
         <div
@@ -125,6 +137,7 @@ function PaymentMethodCard({ pm, totalMonthlyJpy, hasBillingBreakdown }: { pm: P
 }
 
 export default function Dashboard() {
+  const [, navigate] = useLocation();
   const { data: subscriptions, isLoading: subsLoading } = useQuery<Subscription[]>({
     queryKey: ["/api/subscriptions"],
   });
@@ -278,7 +291,7 @@ export default function Dashboard() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {categorySummary.map(cat => (
-              <Card key={cat.id} className="hover-elevate">
+              <Card key={cat.id} className="hover-elevate cursor-pointer" onClick={() => navigate(`/subscriptions?category=${cat.id}`)} data-testid={`card-category-${cat.id}`}>
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
@@ -286,7 +299,10 @@ export default function Dashboard() {
                       <span className="font-medium truncate" data-testid={`text-category-name-${cat.id}`}>{cat.name}</span>
                       <Badge variant="secondary" className="text-xs">{cat.count}件</Badge>
                     </div>
-                    <span className="font-bold whitespace-nowrap" data-testid={`text-category-cost-${cat.id}`}>{formatJpy(cat.monthlyJpy)}/月</span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="font-bold whitespace-nowrap" data-testid={`text-category-cost-${cat.id}`}>{formatJpy(cat.monthlyJpy)}/月</span>
+                      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
                   </div>
                   <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
                     <div
@@ -301,7 +317,7 @@ export default function Dashboard() {
               </Card>
             ))}
             {uncategorized.length > 0 && (
-              <Card className="hover-elevate">
+              <Card className="hover-elevate cursor-pointer" onClick={() => navigate(`/subscriptions?category=none`)} data-testid="card-category-uncategorized">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
@@ -309,7 +325,10 @@ export default function Dashboard() {
                       <span className="font-medium truncate text-muted-foreground">未分類</span>
                       <Badge variant="secondary" className="text-xs">{uncategorized.length}件</Badge>
                     </div>
-                    <span className="font-bold whitespace-nowrap">{formatJpy(uncategorizedMonthly)}/月</span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="font-bold whitespace-nowrap">{formatJpy(uncategorizedMonthly)}/月</span>
+                      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
                   </div>
                   <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
                     <div
@@ -343,11 +362,12 @@ export default function Dashboard() {
                   pm={pm}
                   totalMonthlyJpy={totalMonthlyJpy}
                   hasBillingBreakdown={hasBillingBreakdown}
+                  onNavigate={() => navigate(`/subscriptions?paymentMethod=${pm.id}`)}
                 />
               );
             })}
             {noPaymentMethodSubs.length > 0 && (
-              <Card className="hover-elevate">
+              <Card className="hover-elevate cursor-pointer" onClick={() => navigate(`/subscriptions?paymentMethod=none`)} data-testid="card-pm-unset">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
@@ -355,7 +375,10 @@ export default function Dashboard() {
                       <span className="font-medium truncate text-muted-foreground">未設定</span>
                       <Badge variant="secondary" className="text-xs">{noPaymentMethodSubs.length}件</Badge>
                     </div>
-                    <span className="font-bold whitespace-nowrap">{formatJpy(noPaymentMethodMonthly)}/月</span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="font-bold whitespace-nowrap">{formatJpy(noPaymentMethodMonthly)}/月</span>
+                      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
                   </div>
                   <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
                     <div
