@@ -75,6 +75,8 @@ export const subscriptions = pgTable("subscriptions", {
   serviceGroupId: integer("service_group_id").references(() => serviceGroups.id, { onDelete: "set null" }),
   note: text("note"),
   nextBillingDate: date("next_billing_date"),
+  scheduledAmount: real("scheduled_amount"),
+  scheduledDate: date("scheduled_date"),
   isActive: integer("is_active").notNull().default(1),
 });
 

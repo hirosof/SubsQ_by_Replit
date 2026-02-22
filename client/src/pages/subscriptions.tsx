@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Filter, PackageOpen, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Pencil, Trash2, Filter, PackageOpen, ArrowUpDown, ArrowUp, ArrowDown, CalendarClock, Check } from "lucide-react";
 import type { Subscription, Category, PaymentMethod, BillingAccount, ExchangeRate, ServiceGroup } from "@shared/schema";
 import { getCurrencyLabel } from "@/lib/currency";
 
@@ -123,6 +123,15 @@ function billingDateClass(dateStr: string | null): string {
   return "";
 }
 
+function scheduledDateClass(dateStr: string | null): string {
+  const days = daysUntil(dateStr);
+  if (days === null) return "text-muted-foreground";
+  if (days < 0) return "text-red-500 dark:text-red-400 font-medium";
+  if (days <= 3) return "text-amber-600 dark:text-amber-400 font-medium";
+  if (days <= 7) return "text-amber-500 dark:text-amber-400";
+  return "text-blue-600 dark:text-blue-400";
+}
+
 interface FormData {
   serviceName: string;
   planName: string;
@@ -137,12 +146,14 @@ interface FormData {
   serviceGroupId: string;
   note: string;
   nextBillingDate: string;
+  scheduledAmount: string;
+  scheduledDate: string;
   isActive: number;
 }
 
 const defaultForm: FormData = {
   serviceName: "", planName: "", amount: "", currency: "JPY",
-  billingCycle: "monthly", customCycleNumber: "", customCycleUnit: "months", categoryId: "none", paymentMethodId: "none", billingAccountId: "none", serviceGroupId: "none", note: "", nextBillingDate: "", isActive: 1,
+  billingCycle: "monthly", customCycleNumber: "", customCycleUnit: "months", categoryId: "none", paymentMethodId: "none", billingAccountId: "none", serviceGroupId: "none", note: "", nextBillingDate: "", scheduledAmount: "", scheduledDate: "", isActive: 1,
 };
 
 export default function Subscriptions() {
@@ -199,6 +210,14 @@ export default function Subscriptions() {
     },
     onError: (e: Error) => toast({ title: "エラー", description: e.message, variant: "destructive" }),
   });
+  const applyScheduledMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("POST", `/api/subscriptions/${id}/apply-scheduled`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
+      toast({ title: "価格変更を適用しました" });
+    },
+    onError: (e: Error) => toast({ title: "エラー", description: e.message, variant: "destructive" }),
+  });
 
   const openCreate = () => {
     setEditingSub(null);
@@ -230,6 +249,8 @@ export default function Subscriptions() {
       serviceGroupId: sub.serviceGroupId ? String(sub.serviceGroupId) : "none",
       note: sub.note || "",
       nextBillingDate: sub.nextBillingDate || "",
+      scheduledAmount: sub.scheduledAmount != null ? String(sub.scheduledAmount) : "",
+      scheduledDate: sub.scheduledDate || "",
       isActive: sub.isActive,
     });
     setDialogOpen(true);
@@ -262,6 +283,8 @@ export default function Subscriptions() {
       serviceGroupId: form.serviceGroupId && form.serviceGroupId !== "none" ? parseInt(form.serviceGroupId) : null,
       note: form.note || null,
       nextBillingDate: form.nextBillingDate || null,
+      scheduledAmount: form.scheduledAmount ? parseFloat(form.scheduledAmount) : null,
+      scheduledDate: form.scheduledDate || null,
       isActive: form.isActive,
     };
     if (editingSub) {
@@ -519,6 +542,24 @@ export default function Subscriptions() {
                               {formatCurrency(sub.amount, sub.currency)}
                             </div>
                             <div className="text-xs text-muted-foreground">{getCycleDisplayLabel(sub.billingCycle)}</div>
+                            {sub.scheduledAmount != null && (
+                              <div className={`flex items-center justify-end gap-1 text-xs mt-1 ${scheduledDateClass(sub.scheduledDate)}`}>
+                                <CalendarClock className="h-3 w-3" />
+                                <span>{formatDate(sub.scheduledDate)} → {formatCurrency(sub.scheduledAmount, sub.currency)}</span>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="ml-0.5 text-xs"
+                                  onClick={(e) => { e.stopPropagation(); applyScheduledMutation.mutate(sub.id); }}
+                                  disabled={applyScheduledMutation.isPending}
+                                  title="価格変更を適用"
+                                  data-testid={`button-apply-scheduled-${sub.id}`}
+                                >
+                                  <Check className="h-3 w-3 mr-0.5" />
+                                  適用
+                                </Button>
+                              </div>
+                            )}
                           </td>
                           <td className="p-3 text-right align-top">
                             <div className="font-medium" data-testid={`text-sub-monthly-${sub.id}`}>{formatJpy(mJpy)}</div>
@@ -614,6 +655,23 @@ export default function Subscriptions() {
                         次回課金日: {formatDate(sub.nextBillingDate)}
                       </div>
                     )}
+                    {sub.scheduledAmount != null && (
+                      <div className={`mt-2 flex items-center gap-1.5 text-xs ${scheduledDateClass(sub.scheduledDate)}`}>
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        <span>{formatDate(sub.scheduledDate)} → {formatCurrency(sub.scheduledAmount, sub.currency)}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="ml-auto"
+                          onClick={() => applyScheduledMutation.mutate(sub.id)}
+                          disabled={applyScheduledMutation.isPending}
+                          data-testid={`button-apply-scheduled-mobile-${sub.id}`}
+                        >
+                          <Check className="h-3 w-3 mr-1" />
+                          適用
+                        </Button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               );
@@ -700,6 +758,39 @@ export default function Subscriptions() {
                 onChange={e => setForm({ ...form, nextBillingDate: e.target.value })}
                 data-testid="input-next-billing-date"
               />
+            </div>
+            <div className="rounded-md border p-3 bg-muted/30 space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                価格変更予約
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">変更後の金額</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.scheduledAmount}
+                    onChange={e => setForm({ ...form, scheduledAmount: e.target.value })}
+                    placeholder="未設定"
+                    data-testid="input-scheduled-amount"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">変更予定日</Label>
+                  <Input
+                    type="date"
+                    value={form.scheduledDate}
+                    onChange={e => setForm({ ...form, scheduledDate: e.target.value })}
+                    data-testid="input-scheduled-date"
+                  />
+                </div>
+              </div>
+              {form.scheduledAmount && (
+                <p className="text-xs text-muted-foreground">
+                  {form.scheduledDate ? `${formatDate(form.scheduledDate)}` : "日付未設定"} に {formatCurrency(parseFloat(form.scheduledAmount) || 0, form.currency)} へ変更予定
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>カテゴリ</Label>

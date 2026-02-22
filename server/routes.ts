@@ -191,5 +191,20 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  app.post("/api/subscriptions/:id/apply-scheduled", isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const sub = await storage.getSubscription(id);
+    if (!sub) return res.status(404).json({ message: "Not found" });
+    if (sub.scheduledAmount == null) {
+      return res.status(400).json({ message: "価格変更予約がありません" });
+    }
+    const row = await storage.updateSubscription(id, {
+      amount: sub.scheduledAmount,
+      scheduledAmount: null,
+      scheduledDate: null,
+    });
+    res.json(row);
+  });
+
   return httpServer;
 }

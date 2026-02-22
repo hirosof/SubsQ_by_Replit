@@ -1,11 +1,14 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, Layers, Wallet, CreditCard, ChevronDown, ChevronRight, ExternalLink, Group, CalendarClock } from "lucide-react";
+import { TrendingUp, Layers, Wallet, CreditCard, ChevronDown, ChevronRight, ExternalLink, Group, CalendarClock, Check } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 import type { Subscription, Category, ExchangeRate, PaymentMethod, BillingAccount, ServiceGroup } from "@shared/schema";
 import { getCurrencyLabel } from "@/lib/currency";
 
@@ -150,7 +153,20 @@ function PaymentMethodCard({ pm, totalMonthlyJpy, hasBillingBreakdown, onNavigat
   );
 }
 
+function scheduledDateClass(dateStr: string | null): string {
+  if (!dateStr) return "text-muted-foreground";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(dateStr + "T00:00:00");
+  const days = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (days < 0) return "text-red-500 dark:text-red-400 font-medium";
+  if (days <= 3) return "text-amber-600 dark:text-amber-400 font-medium";
+  if (days <= 7) return "text-amber-500 dark:text-amber-400";
+  return "text-blue-600 dark:text-blue-400";
+}
+
 export default function Dashboard() {
+  const { toast } = useToast();
   const [, navigate] = useLocation();
   const { data: subscriptions, isLoading: subsLoading } = useQuery<Subscription[]>({
     queryKey: ["/api/subscriptions"],
@@ -169,6 +185,15 @@ export default function Dashboard() {
   });
   const { data: serviceGroups, isLoading: sgLoading } = useQuery<ServiceGroup[]>({
     queryKey: ["/api/service-groups"],
+  });
+
+  const applyScheduledMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("POST", `/api/subscriptions/${id}/apply-scheduled`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
+      toast({ title: "価格変更を適用しました" });
+    },
+    onError: (e: Error) => toast({ title: "エラー", description: e.message, variant: "destructive" }),
   });
 
   const isLoading = subsLoading || catsLoading || ratesLoading || pmLoading || baLoading || sgLoading;
@@ -261,10 +286,31 @@ export default function Dashboard() {
     toDate(s.nextBillingDate) >= nextMonthStart && toDate(s.nextBillingDate) <= nextMonthEnd
   ).sort((a, b) => (a.nextBillingDate || "").localeCompare(b.nextBillingDate || ""));
 
+  const scheduledChangeSubs = (subscriptions || []).filter(s => s.scheduledAmount != null).sort((a, b) => {
+    const da = a.scheduledDate || "9999-12-31";
+    const db = b.scheduledDate || "9999-12-31";
+    return da.localeCompare(db);
+  });
+
+  const scheduledPast = scheduledChangeSubs.filter(s => {
+    if (!s.scheduledDate) return false;
+    return toDate(s.scheduledDate) < now;
+  });
+  const scheduledUpcoming = scheduledChangeSubs.filter(s => {
+    if (!s.scheduledDate) return true;
+    return toDate(s.scheduledDate) >= now;
+  });
+
   const formatDateShort = (dateStr: string | null): string => {
     if (!dateStr) return "-";
     const d = toDate(dateStr);
     return `${d.getMonth() + 1}/${d.getDate()}`;
+  };
+
+  const formatDateFull = (dateStr: string | null): string => {
+    if (!dateStr) return "日付未設定";
+    const d = toDate(dateStr);
+    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
   };
 
   const getCycleLabel = (cycle: string): string => {
@@ -522,6 +568,85 @@ export default function Dashboard() {
                   </div>
                 </CardContent>
               </Card>
+            )}
+          </div>
+        </div>
+      )}
+
+      {scheduledChangeSubs.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <CalendarClock className="h-5 w-5" />
+            価格変更予定
+          </h2>
+          <div className="space-y-4">
+            {scheduledPast.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium text-red-600 dark:text-red-400 mb-2">変更日を過ぎています</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {scheduledPast.map(sub => {
+                    const cat = categories?.find(c => c.id === sub.categoryId);
+                    return (
+                      <Card key={sub.id} className="border-red-500/30" data-testid={`card-scheduled-past-${sub.id}`}>
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {cat && <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />}
+                              <span className="font-medium truncate text-sm">{sub.serviceName}</span>
+                              {sub.planName && <span className="text-xs text-muted-foreground">({sub.planName})</span>}
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="flex-shrink-0"
+                              onClick={() => applyScheduledMutation.mutate(sub.id)}
+                              disabled={applyScheduledMutation.isPending}
+                              data-testid={`button-apply-scheduled-dash-${sub.id}`}
+                            >
+                              <Check className="h-3 w-3 mr-1" />
+                              適用
+                            </Button>
+                          </div>
+                          <div className={`flex items-center justify-between mt-1 text-xs ${scheduledDateClass(sub.scheduledDate)}`}>
+                            <span>{formatDateFull(sub.scheduledDate)} 〜</span>
+                            <span>{formatCurrency(sub.amount, sub.currency)} → <strong>{formatCurrency(sub.scheduledAmount!, sub.currency)}</strong></span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {scheduledUpcoming.length > 0 && (
+              <div>
+                {scheduledPast.length > 0 && <h3 className="text-sm font-medium text-muted-foreground mb-2">今後の予定</h3>}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {scheduledUpcoming.map(sub => {
+                    const cat = categories?.find(c => c.id === sub.categoryId);
+                    return (
+                      <Card key={sub.id} className="hover-elevate" data-testid={`card-scheduled-upcoming-${sub.id}`}>
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {cat && <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />}
+                              <span className="font-medium truncate text-sm">{sub.serviceName}</span>
+                              {sub.planName && <span className="text-xs text-muted-foreground">({sub.planName})</span>}
+                            </div>
+                            <Badge variant="outline" className={`text-xs ${scheduledDateClass(sub.scheduledDate)}`}>
+                              {formatDateFull(sub.scheduledDate)}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+                            <span>価格変更予定</span>
+                            <span>{formatCurrency(sub.amount, sub.currency)} → <strong className="text-foreground">{formatCurrency(sub.scheduledAmount!, sub.currency)}</strong></span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
         </div>
