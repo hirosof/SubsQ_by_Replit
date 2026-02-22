@@ -461,13 +461,13 @@ export default function Subscriptions() {
           </Select>
         )}
         <Select value={filterScheduled} onValueChange={setFilterScheduled}>
-          <SelectTrigger className="w-40" data-testid="select-filter-scheduled">
+          <SelectTrigger className="w-48" data-testid="select-filter-scheduled">
             <SelectValue placeholder="価格変更予約" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">予約: すべて</SelectItem>
-            <SelectItem value="yes">予約あり</SelectItem>
-            <SelectItem value="no">予約なし</SelectItem>
+            <SelectItem value="all">価格変更予約: すべて</SelectItem>
+            <SelectItem value="yes">価格変更予約あり</SelectItem>
+            <SelectItem value="no">価格変更予約なし</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
