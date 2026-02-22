@@ -575,10 +575,22 @@ export default function Dashboard() {
 
       {scheduledChangeSubs.length > 0 && (
         <div>
-          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <CalendarClock className="h-5 w-5" />
-            価格変更予定
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <CalendarClock className="h-5 w-5" />
+              価格変更予定
+            </h2>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => navigate("/subscriptions?scheduled=yes")}
+              data-testid="button-navigate-scheduled-list"
+            >
+              一覧を見る
+              <ExternalLink className="h-3.5 w-3.5 ml-1" />
+            </Button>
+          </div>
           <div className="space-y-4">
             {scheduledPast.length > 0 && (
               <div>

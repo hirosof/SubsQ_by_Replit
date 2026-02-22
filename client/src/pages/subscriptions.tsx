@@ -165,6 +165,7 @@ export default function Subscriptions() {
   const [filterBillingAccount, setFilterBillingAccount] = useState<string>(searchParams.get("billingAccount") || "all");
   const [filterServiceGroup, setFilterServiceGroup] = useState<string>(searchParams.get("serviceGroup") || "all");
   const [filterCurrency, setFilterCurrency] = useState<string>("all");
+  const [filterScheduled, setFilterScheduled] = useState<string>(searchParams.get("scheduled") || "all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [sortKey, setSortKey] = useState<SortKey>("monthly");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -314,6 +315,8 @@ export default function Subscriptions() {
       if (filterServiceGroup === "none" ? s.serviceGroupId : s.serviceGroupId !== parseInt(filterServiceGroup)) return false;
     }
     if (filterCurrency !== "all" && s.currency !== filterCurrency) return false;
+    if (filterScheduled === "yes" && s.scheduledAmount == null) return false;
+    if (filterScheduled === "no" && s.scheduledAmount != null) return false;
     if (filterStatus !== "all" && s.isActive !== parseInt(filterStatus)) return false;
     return true;
   }) || [];
@@ -457,6 +460,16 @@ export default function Subscriptions() {
             </SelectContent>
           </Select>
         )}
+        <Select value={filterScheduled} onValueChange={setFilterScheduled}>
+          <SelectTrigger className="w-40" data-testid="select-filter-scheduled">
+            <SelectValue placeholder="価格変更予約" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">予約: すべて</SelectItem>
+            <SelectItem value="yes">予約あり</SelectItem>
+            <SelectItem value="no">予約なし</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
           <SelectTrigger className="w-36" data-testid="select-filter-status">
             <SelectValue placeholder="ステータス" />
