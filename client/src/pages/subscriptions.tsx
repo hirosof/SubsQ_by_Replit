@@ -134,7 +134,9 @@ function scheduledDateClass(dateStr: string | null): string {
 
 interface FormData {
   serviceName: string;
+  serviceUrl: string;
   planName: string;
+  billerName: string;
   amount: string;
   currency: string;
   billingCycle: string;
@@ -152,7 +154,7 @@ interface FormData {
 }
 
 const defaultForm: FormData = {
-  serviceName: "", planName: "", amount: "", currency: "JPY",
+  serviceName: "", serviceUrl: "", planName: "", billerName: "", amount: "", currency: "JPY",
   billingCycle: "monthly", customCycleNumber: "", customCycleUnit: "months", categoryId: "none", paymentMethodId: "none", billingAccountId: "none", serviceGroupId: "none", note: "", nextBillingDate: "", scheduledAmount: "", scheduledDate: "", isActive: 1,
 };
 
@@ -240,7 +242,9 @@ export default function Subscriptions() {
     const parsed = standard ? null : parseCustomCycle(sub.billingCycle);
     setForm({
       serviceName: sub.serviceName,
+      serviceUrl: sub.serviceUrl || "",
       planName: sub.planName || "",
+      billerName: sub.billerName || "",
       amount: String(sub.amount),
       currency: sub.currency,
       billingCycle: standard ? sub.billingCycle : "other",
@@ -276,7 +280,9 @@ export default function Subscriptions() {
     }
     const payload = {
       serviceName: form.serviceName,
+      serviceUrl: form.serviceUrl || null,
       planName: form.planName || null,
+      billerName: form.billerName || null,
       amount,
       currency: form.currency,
       billingCycle: resolvedCycle,
@@ -560,7 +566,11 @@ export default function Subscriptions() {
                           <td className="p-3">
                             <div className="flex items-center gap-2 flex-wrap">
                               {cat && <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />}
-                              <span className="font-semibold" data-testid={`text-sub-name-${sub.id}`}>{sub.serviceName}</span>
+                              {sub.serviceUrl ? (
+                                <a href={sub.serviceUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline" onClick={e => e.stopPropagation()} data-testid={`link-sub-name-${sub.id}`}>{sub.serviceName}</a>
+                              ) : (
+                                <span className="font-semibold" data-testid={`text-sub-name-${sub.id}`}>{sub.serviceName}</span>
+                              )}
                               {sub.planName && <span className="text-muted-foreground">({sub.planName})</span>}
                               {sub.isActive === 0 && <Badge variant="secondary" className="text-xs">停止中</Badge>}
                             </div>
@@ -568,6 +578,7 @@ export default function Subscriptions() {
                               {cat && <span>{cat.name}</span>}
                               {pm && <span className="flex items-center gap-1"><CreditCardIcon />{pm.name}{ba ? ` / ${ba.name}` : ""}</span>}
                               {sg && <Badge variant="outline" className="text-xs" style={{ borderColor: sg.color, color: sg.color }}>{sg.name}</Badge>}
+                              {sub.billerName && <span className="flex items-center gap-1">請求: {sub.billerName}</span>}
                               {sub.note && <span className="truncate max-w-[180px]">{sub.note}</span>}
                             </div>
                           </td>
@@ -651,7 +662,11 @@ export default function Subscriptions() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           {cat && <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />}
-                          <span className="font-semibold" data-testid={`text-sub-name-${sub.id}`}>{sub.serviceName}</span>
+                          {sub.serviceUrl ? (
+                            <a href={sub.serviceUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline" onClick={e => e.stopPropagation()} data-testid={`link-sub-name-${sub.id}`}>{sub.serviceName}</a>
+                          ) : (
+                            <span className="font-semibold" data-testid={`text-sub-name-${sub.id}`}>{sub.serviceName}</span>
+                          )}
                           {sub.planName && <span className="text-sm text-muted-foreground">({sub.planName})</span>}
                           {sub.isActive === 0 && <Badge variant="secondary" className="text-xs">停止中</Badge>}
                         </div>
@@ -659,6 +674,7 @@ export default function Subscriptions() {
                           {cat && <span>{cat.name}</span>}
                           {pm && <span className="flex items-center gap-1"><CreditCardIcon />{pm.name}{ba ? ` / ${ba.name}` : ""}</span>}
                           {sg && <Badge variant="outline" className="text-xs" style={{ borderColor: sg.color, color: sg.color }}>{sg.name}</Badge>}
+                          {sub.billerName && <span>請求: {sub.billerName}</span>}
                         </div>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
@@ -725,8 +741,16 @@ export default function Subscriptions() {
               <Input value={form.serviceName} onChange={e => setForm({ ...form, serviceName: e.target.value })} placeholder="例: GitHub Copilot" data-testid="input-service-name" />
             </div>
             <div className="space-y-2">
+              <Label>サービスURL</Label>
+              <Input value={form.serviceUrl} onChange={e => setForm({ ...form, serviceUrl: e.target.value })} placeholder="例: https://github.com/features/copilot" data-testid="input-service-url" />
+            </div>
+            <div className="space-y-2">
               <Label>コース名</Label>
               <Input value={form.planName} onChange={e => setForm({ ...form, planName: e.target.value })} placeholder="例: Pro" data-testid="input-plan-name" />
+            </div>
+            <div className="space-y-2">
+              <Label>請求者名</Label>
+              <Input value={form.billerName} onChange={e => setForm({ ...form, billerName: e.target.value })} placeholder="例: GITHUB INC." data-testid="input-biller-name" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
