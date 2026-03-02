@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCategorySchema, insertPaymentMethodSchema, insertBillingAccountSchema, insertSubscriptionSchema, insertExchangeRateSchema, insertServiceGroupSchema } from "@shared/schema";
+import { insertCategorySchema, insertPaymentMethodSchema, insertActualBillingDestinationSchema, insertBillingAccountSchema, insertSubscriptionSchema, insertExchangeRateSchema, insertServiceGroupSchema } from "@shared/schema";
 import { isAuthenticated } from "./replit_integrations/auth";
 
 export async function registerRoutes(
@@ -59,6 +59,37 @@ export async function registerRoutes(
   app.delete("/api/payment-methods/:id", isAuthenticated, async (req, res) => {
     await storage.deletePaymentMethod(parseInt(req.params.id));
     res.status(204).send();
+  });
+
+  app.get("/api/actual-billing-destinations", isAuthenticated, async (_req, res) => {
+    const data = await storage.getActualBillingDestinations();
+    res.json(data);
+  });
+  app.post("/api/actual-billing-destinations", isAuthenticated, async (req, res) => {
+    const parsed = insertActualBillingDestinationSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const row = await storage.createActualBillingDestination(parsed.data);
+    res.status(201).json(row);
+  });
+  app.patch("/api/actual-billing-destinations/:id", isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const row = await storage.updateActualBillingDestination(id, req.body);
+    if (!row) return res.status(404).json({ message: "Not found" });
+    res.json(row);
+  });
+  app.delete("/api/actual-billing-destinations/:id", isAuthenticated, async (req, res) => {
+    await storage.deleteActualBillingDestination(parseInt(req.params.id));
+    res.status(204).send();
+  });
+
+  app.put("/api/actual-billing-destinations/reorder", isAuthenticated, async (req, res) => {
+    const ids = req.body.ids;
+    if (!Array.isArray(ids)) return res.status(400).json({ message: "ids array required" });
+    for (let i = 0; i < ids.length; i++) {
+      await storage.updateActualBillingDestination(ids[i], { sortOrder: i });
+    }
+    const data = await storage.getActualBillingDestinations();
+    res.json(data);
   });
 
   app.get("/api/billing-accounts", isAuthenticated, async (_req, res) => {

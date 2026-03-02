@@ -27,16 +27,32 @@ export const paymentMethodsRelations = relations(paymentMethods, ({ many }) => (
   subscriptions: many(subscriptions),
 }));
 
+export const actualBillingDestinations = pgTable("actual_billing_destinations", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  color: text("color").notNull().default("#10b981"),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+export const actualBillingDestinationsRelations = relations(actualBillingDestinations, ({ many }) => ({
+  billingAccounts: many(billingAccounts),
+}));
+
 export const billingAccounts = pgTable("billing_accounts", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   paymentMethodId: integer("payment_method_id").notNull().references(() => paymentMethods.id, { onDelete: "cascade" }),
+  actualBillingDestinationId: integer("actual_billing_destination_id").references(() => actualBillingDestinations.id, { onDelete: "set null" }),
 });
 
 export const billingAccountsRelations = relations(billingAccounts, ({ one, many }) => ({
   paymentMethod: one(paymentMethods, {
     fields: [billingAccounts.paymentMethodId],
     references: [paymentMethods.id],
+  }),
+  actualBillingDestination: one(actualBillingDestinations, {
+    fields: [billingAccounts.actualBillingDestinationId],
+    references: [actualBillingDestinations.id],
   }),
   subscriptions: many(subscriptions),
 }));
@@ -101,6 +117,7 @@ export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
 
 export const insertCategorySchema = createInsertSchema(categories).omit({ id: true });
 export const insertPaymentMethodSchema = createInsertSchema(paymentMethods).omit({ id: true });
+export const insertActualBillingDestinationSchema = createInsertSchema(actualBillingDestinations).omit({ id: true });
 export const insertBillingAccountSchema = createInsertSchema(billingAccounts).omit({ id: true });
 export const insertServiceGroupSchema = createInsertSchema(serviceGroups).omit({ id: true });
 export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({ id: true });
@@ -109,6 +126,8 @@ export type Category = typeof categories.$inferSelect;
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type PaymentMethod = typeof paymentMethods.$inferSelect;
 export type InsertPaymentMethod = z.infer<typeof insertPaymentMethodSchema>;
+export type ActualBillingDestination = typeof actualBillingDestinations.$inferSelect;
+export type InsertActualBillingDestination = z.infer<typeof insertActualBillingDestinationSchema>;
 export type BillingAccount = typeof billingAccounts.$inferSelect;
 export type InsertBillingAccount = z.infer<typeof insertBillingAccountSchema>;
 export type ServiceGroup = typeof serviceGroups.$inferSelect;

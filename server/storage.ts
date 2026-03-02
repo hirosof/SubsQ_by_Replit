@@ -1,6 +1,7 @@
 import {
   categories, type Category, type InsertCategory,
   paymentMethods, type PaymentMethod, type InsertPaymentMethod,
+  actualBillingDestinations, type ActualBillingDestination, type InsertActualBillingDestination,
   billingAccounts, type BillingAccount, type InsertBillingAccount,
   subscriptions, type Subscription, type InsertSubscription,
   exchangeRates, type ExchangeRate, type InsertExchangeRate,
@@ -21,6 +22,12 @@ export interface IStorage {
   createPaymentMethod(data: InsertPaymentMethod): Promise<PaymentMethod>;
   updatePaymentMethod(id: number, data: Partial<InsertPaymentMethod>): Promise<PaymentMethod | undefined>;
   deletePaymentMethod(id: number): Promise<void>;
+
+  getActualBillingDestinations(): Promise<ActualBillingDestination[]>;
+  getActualBillingDestination(id: number): Promise<ActualBillingDestination | undefined>;
+  createActualBillingDestination(data: InsertActualBillingDestination): Promise<ActualBillingDestination>;
+  updateActualBillingDestination(id: number, data: Partial<InsertActualBillingDestination>): Promise<ActualBillingDestination | undefined>;
+  deleteActualBillingDestination(id: number): Promise<void>;
 
   getBillingAccounts(): Promise<BillingAccount[]>;
   getBillingAccount(id: number): Promise<BillingAccount | undefined>;
@@ -85,6 +92,25 @@ export class DatabaseStorage implements IStorage {
   }
   async deletePaymentMethod(id: number): Promise<void> {
     await db.delete(paymentMethods).where(eq(paymentMethods.id, id));
+  }
+
+  async getActualBillingDestinations(): Promise<ActualBillingDestination[]> {
+    return db.select().from(actualBillingDestinations).orderBy(asc(actualBillingDestinations.sortOrder), asc(actualBillingDestinations.id));
+  }
+  async getActualBillingDestination(id: number): Promise<ActualBillingDestination | undefined> {
+    const [row] = await db.select().from(actualBillingDestinations).where(eq(actualBillingDestinations.id, id));
+    return row || undefined;
+  }
+  async createActualBillingDestination(data: InsertActualBillingDestination): Promise<ActualBillingDestination> {
+    const [row] = await db.insert(actualBillingDestinations).values(data).returning();
+    return row;
+  }
+  async updateActualBillingDestination(id: number, data: Partial<InsertActualBillingDestination>): Promise<ActualBillingDestination | undefined> {
+    const [row] = await db.update(actualBillingDestinations).set(data).where(eq(actualBillingDestinations.id, id)).returning();
+    return row || undefined;
+  }
+  async deleteActualBillingDestination(id: number): Promise<void> {
+    await db.delete(actualBillingDestinations).where(eq(actualBillingDestinations.id, id));
   }
 
   async getBillingAccounts(): Promise<BillingAccount[]> {

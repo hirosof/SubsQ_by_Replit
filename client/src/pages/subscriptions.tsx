@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Filter, PackageOpen, ArrowUpDown, ArrowUp, ArrowDown, CalendarClock, Check } from "lucide-react";
-import type { Subscription, Category, PaymentMethod, BillingAccount, ExchangeRate, ServiceGroup } from "@shared/schema";
+import type { Subscription, Category, PaymentMethod, BillingAccount, ExchangeRate, ServiceGroup, ActualBillingDestination } from "@shared/schema";
 import { getCurrencyLabel } from "@/lib/currency";
 
 type SortKey = "name" | "cycleAmount" | "monthly" | "annual" | "nextBilling";
@@ -164,6 +164,7 @@ export default function Subscriptions() {
   const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>(searchParams.get("paymentMethod") || "all");
   const [filterBillingAccount, setFilterBillingAccount] = useState<string>(searchParams.get("billingAccount") || "all");
   const [filterServiceGroup, setFilterServiceGroup] = useState<string>(searchParams.get("serviceGroup") || "all");
+  const [filterActualBillingDestination, setFilterActualBillingDestination] = useState<string>(searchParams.get("actualBillingDestination") || "all");
   const [filterCurrency, setFilterCurrency] = useState<string>("all");
   const [filterScheduled, setFilterScheduled] = useState<string>(searchParams.get("scheduled") || "all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -179,6 +180,7 @@ export default function Subscriptions() {
   const { data: paymentMethods } = useQuery<PaymentMethod[]>({ queryKey: ["/api/payment-methods"] });
   const { data: billingAccounts } = useQuery<BillingAccount[]>({ queryKey: ["/api/billing-accounts"] });
   const { data: serviceGroups } = useQuery<ServiceGroup[]>({ queryKey: ["/api/service-groups"] });
+  const { data: actualBillingDestinations } = useQuery<ActualBillingDestination[]>({ queryKey: ["/api/actual-billing-destinations"] });
   const { data: exchangeRates } = useQuery<ExchangeRate[]>({ queryKey: ["/api/exchange-rates"] });
 
   const rates = exchangeRates || [];
@@ -314,6 +316,12 @@ export default function Subscriptions() {
     if (filterServiceGroup !== "all") {
       if (filterServiceGroup === "none" ? s.serviceGroupId : s.serviceGroupId !== parseInt(filterServiceGroup)) return false;
     }
+    if (filterActualBillingDestination !== "all") {
+      const linkedBaIds = (billingAccounts || [])
+        .filter(ba => ba.actualBillingDestinationId === parseInt(filterActualBillingDestination))
+        .map(ba => ba.id);
+      if (!s.billingAccountId || !linkedBaIds.includes(s.billingAccountId)) return false;
+    }
     if (filterCurrency !== "all" && s.currency !== filterCurrency) return false;
     if (filterScheduled === "yes" && s.scheduledAmount == null) return false;
     if (filterScheduled === "no" && s.scheduledAmount != null) return false;
@@ -443,6 +451,19 @@ export default function Subscriptions() {
               <SelectItem value="none">未設定</SelectItem>
               {serviceGroups?.map(g => (
                 <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {(actualBillingDestinations?.length || 0) > 0 && (
+          <Select value={filterActualBillingDestination} onValueChange={setFilterActualBillingDestination}>
+            <SelectTrigger className="w-44" data-testid="select-filter-abd">
+              <SelectValue placeholder="最終請求先" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">最終請求先: すべて</SelectItem>
+              {actualBillingDestinations?.map(d => (
+                <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>

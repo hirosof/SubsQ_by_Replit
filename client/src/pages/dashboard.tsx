@@ -4,12 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, Layers, Wallet, CreditCard, ChevronDown, ChevronRight, ExternalLink, Group, CalendarClock, Check } from "lucide-react";
+import { TrendingUp, Layers, Wallet, CreditCard, ChevronDown, ChevronRight, ExternalLink, Group, CalendarClock, Check, Target } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import type { Subscription, Category, ExchangeRate, PaymentMethod, BillingAccount, ServiceGroup } from "@shared/schema";
+import type { Subscription, Category, ExchangeRate, PaymentMethod, BillingAccount, ServiceGroup, ActualBillingDestination } from "@shared/schema";
 import { getCurrencyLabel } from "@/lib/currency";
 
 function formatJpy(amount: number): string {
@@ -153,6 +153,89 @@ function PaymentMethodCard({ pm, totalMonthlyJpy, hasBillingBreakdown, onNavigat
   );
 }
 
+type AbdSummary = ActualBillingDestination & {
+  count: number;
+  monthlyJpy: number;
+  breakdown: (BillingAccount & { pmName: string; count: number; monthlyJpy: number })[];
+};
+
+function AbdCard({ abd, totalMonthlyJpy, hasBreakdown, onNavigate }: { abd: AbdSummary; totalMonthlyJpy: number; hasBreakdown: boolean; onNavigate: () => void }) {
+  const [open, setOpen] = useState(false);
+
+  const cardContent = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {hasBreakdown && (
+            open ? <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" /> : <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          )}
+          <Target className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          <span className="font-medium truncate" data-testid={`text-abd-name-${abd.id}`}>{abd.name}</span>
+          <Badge variant="secondary" className="text-xs">{abd.count}件</Badge>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="font-bold whitespace-nowrap" data-testid={`text-abd-cost-${abd.id}`}>{formatJpy(abd.monthlyJpy)}/月</span>
+          <span
+            role="link"
+            onClick={(e) => { e.stopPropagation(); onNavigate(); }}
+            className="p-1 rounded hover:bg-muted transition-colors cursor-pointer"
+            title="サブスク一覧を表示"
+            data-testid={`link-abd-subs-${abd.id}`}
+          >
+            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+          </span>
+        </div>
+      </div>
+      <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all"
+          style={{
+            backgroundColor: abd.color,
+            width: `${totalMonthlyJpy > 0 ? (abd.monthlyJpy / totalMonthlyJpy) * 100 : 0}%`,
+          }}
+        />
+      </div>
+    </>
+  );
+
+  if (!hasBreakdown) {
+    return (
+      <Card className="hover-elevate">
+        <CardContent className="p-4">{cardContent}</CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card className="hover-elevate">
+        <CardContent className="p-4">
+          <CollapsibleTrigger asChild>
+            <button className="w-full text-left cursor-pointer" data-testid={`btn-abd-expand-${abd.id}`}>{cardContent}</button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="mt-3 pl-6 space-y-1 border-l-2 border-muted ml-2">
+              {abd.breakdown.map(ba => (
+                <div
+                  key={ba.id}
+                  className="flex items-center justify-between gap-2 text-sm rounded-md px-2 py-1.5 hover:bg-muted/50 transition-colors"
+                  data-testid={`row-abd-ba-${ba.id}`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="truncate text-muted-foreground">{ba.pmName} / {ba.name}</span>
+                    <Badge variant="outline" className="text-xs">{ba.count}件</Badge>
+                  </div>
+                  <span className="font-semibold whitespace-nowrap flex-shrink-0">{formatJpy(ba.monthlyJpy)}/月</span>
+                </div>
+              ))}
+            </div>
+          </CollapsibleContent>
+        </CardContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
 function scheduledDateClass(dateStr: string | null): string {
   if (!dateStr) return "text-muted-foreground";
   const today = new Date();
@@ -186,6 +269,9 @@ export default function Dashboard() {
   const { data: serviceGroups, isLoading: sgLoading } = useQuery<ServiceGroup[]>({
     queryKey: ["/api/service-groups"],
   });
+  const { data: actualBillingDestinations, isLoading: abdLoading } = useQuery<ActualBillingDestination[]>({
+    queryKey: ["/api/actual-billing-destinations"],
+  });
 
   const applyScheduledMutation = useMutation({
     mutationFn: (id: number) => apiRequest("POST", `/api/subscriptions/${id}/apply-scheduled`),
@@ -196,7 +282,7 @@ export default function Dashboard() {
     onError: (e: Error) => toast({ title: "エラー", description: e.message, variant: "destructive" }),
   });
 
-  const isLoading = subsLoading || catsLoading || ratesLoading || pmLoading || baLoading || sgLoading;
+  const isLoading = subsLoading || catsLoading || ratesLoading || pmLoading || baLoading || sgLoading || abdLoading;
   const rates = exchangeRates || [];
   const activeSubs = subscriptions?.filter(s => s.isActive === 1) || [];
 
@@ -247,6 +333,19 @@ export default function Dashboard() {
 
   const noGroupSubs = activeSubs.filter(s => !s.serviceGroupId);
   const noGroupMonthly = noGroupSubs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
+
+  const abdSummary = (actualBillingDestinations || []).map(abd => {
+    const linkedBaIds = (billingAccounts || []).filter(ba => ba.actualBillingDestinationId === abd.id).map(ba => ba.id);
+    const subs = activeSubs.filter(s => s.billingAccountId && linkedBaIds.includes(s.billingAccountId));
+    const monthly = subs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
+    const breakdown = (billingAccounts || []).filter(ba => ba.actualBillingDestinationId === abd.id).map(ba => {
+      const pm = (paymentMethods || []).find(p => p.id === ba.paymentMethodId);
+      const baSubs = subs.filter(s => s.billingAccountId === ba.id);
+      const baMonthly = baSubs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
+      return { ...ba, pmName: pm?.name || "", count: baSubs.length, monthlyJpy: baMonthly };
+    }).filter(b => b.count > 0);
+    return { ...abd, count: subs.length, monthlyJpy: monthly, breakdown };
+  }).filter(a => a.count > 0);
 
   const missingRates = activeSubs
     .filter(s => s.currency !== "JPY" && getRate(s.currency, rates) === 0)
@@ -515,6 +614,26 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {abdSummary.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold mb-3">最終請求先別コスト</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {abdSummary.map(abd => {
+              const hasBreakdown = abd.breakdown.length > 1;
+              return (
+                <AbdCard
+                  key={abd.id}
+                  abd={abd}
+                  totalMonthlyJpy={totalMonthlyJpy}
+                  hasBreakdown={hasBreakdown}
+                  onNavigate={() => navigate(`/subscriptions?actualBillingDestination=${abd.id}`)}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {(serviceGroupSummary.length > 0 || noGroupSubs.length > 0) && (serviceGroups?.length || 0) > 0 && (
         <div>
