@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrendingUp, Layers, Wallet, CreditCard, ChevronDown, ChevronRight, ExternalLink, Group, CalendarClock, Check, Target } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import type { Subscription, Category, ExchangeRate, PaymentMethod, BillingAccount, ServiceGroup, ActualBillingDestination } from "@shared/schema";
@@ -283,6 +283,22 @@ export default function Dashboard() {
     },
     onError: (e: Error) => toast({ title: "エラー", description: e.message, variant: "destructive" }),
   });
+
+  const advanceBillingMutation = useMutation<{ count: number }, Error>({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/subscriptions/advance-billing-dates");
+      return res.json() as Promise<{ count: number }>;
+    },
+    onSuccess: (data) => {
+      if (data.count > 0) {
+        queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
+      }
+    },
+  });
+
+  useEffect(() => {
+    advanceBillingMutation.mutate();
+  }, []);
 
   const isLoading = subsLoading || catsLoading || ratesLoading || pmLoading || baLoading || sgLoading || abdLoading;
   const rates = exchangeRates || [];

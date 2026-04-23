@@ -53,6 +53,7 @@ export interface IStorage {
   createSubscription(data: InsertSubscription): Promise<Subscription>;
   updateSubscription(id: number, data: Partial<InsertSubscription>): Promise<Subscription | undefined>;
   deleteSubscription(id: number): Promise<void>;
+  advanceBillingDates(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -191,6 +192,85 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteSubscription(id: number): Promise<void> {
     await db.delete(subscriptions).where(eq(subscriptions.id, id));
+  }
+
+  async advanceBillingDates(): Promise<number> {
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const thisMonthStartStr = `${thisMonthStart.getFullYear()}-${String(thisMonthStart.getMonth() + 1).padStart(2, "0")}-01`;
+
+    const allSubs = await db.select().from(subscriptions);
+    let updatedCount = 0;
+
+    for (const sub of allSubs) {
+      if (!sub.nextBillingDate) continue;
+      if (sub.nextBillingDate >= thisMonthStartStr) continue;
+
+      let current = new Date(sub.nextBillingDate + "T00:00:00");
+      const cycle = sub.billingCycle;
+
+      const addMonthsClamped = (d: Date, months: number): Date => {
+        const day = d.getDate();
+        const targetYear = d.getFullYear() + Math.floor((d.getMonth() + months) / 12);
+        const targetMonth = (d.getMonth() + months) % 12;
+        const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+        return new Date(targetYear, targetMonth, Math.min(day, lastDay));
+      };
+
+      const advance = (d: Date): Date => {
+        if (cycle === "monthly") {
+          return addMonthsClamped(d, 1);
+        } else if (cycle === "annual") {
+          return addMonthsClamped(d, 12);
+        } else {
+          const match = cycle.match(/^(\d+)_(days|weeks|months|years)$/);
+          if (match) {
+            const num = parseInt(match[1]);
+            switch (match[2]) {
+              case "days": {
+                const next = new Date(d);
+                next.setDate(next.getDate() + num);
+                return next;
+              }
+              case "weeks": {
+                const next = new Date(d);
+                next.setDate(next.getDate() + num * 7);
+                return next;
+              }
+              case "months":
+                return addMonthsClamped(d, num);
+              case "years":
+                return addMonthsClamped(d, num * 12);
+            }
+          }
+        }
+        return d;
+      };
+
+      let advanced = false;
+      let iterations = 0;
+      const maxIterations = 10000;
+      while (iterations < maxIterations) {
+        iterations++;
+        const next = advance(current);
+        const nextStr = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
+        if (nextStr >= thisMonthStartStr) {
+          current = next;
+          advanced = true;
+          break;
+        }
+        if (next.getTime() === current.getTime()) break;
+        current = next;
+      }
+
+      if (advanced) {
+        const newDateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`;
+        await db.update(subscriptions).set({ nextBillingDate: newDateStr }).where(eq(subscriptions.id, sub.id));
+        updatedCount++;
+      }
+    }
+
+    return updatedCount;
   }
 }
 

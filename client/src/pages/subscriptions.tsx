@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Filter, PackageOpen, ArrowUpDown, ArrowUp, ArrowDown, CalendarClock, Check } from "lucide-react";
+import { Plus, Pencil, Trash2, Filter, PackageOpen, ArrowUpDown, ArrowUp, ArrowDown, CalendarClock, Check, RefreshCw } from "lucide-react";
 import type { Subscription, Category, PaymentMethod, BillingAccount, ExchangeRate, ServiceGroup, ActualBillingDestination } from "@shared/schema";
 import { getCurrencyLabel } from "@/lib/currency";
 
@@ -224,6 +224,18 @@ export default function Subscriptions() {
     onError: (e: Error) => toast({ title: "エラー", description: e.message, variant: "destructive" }),
   });
 
+  const advanceBillingMutation = useMutation<{ count: number }, Error>({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/subscriptions/advance-billing-dates");
+      return res.json() as Promise<{ count: number }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
+      toast({ title: data.count > 0 ? `次回課金日を ${data.count} 件更新しました` : "更新対象のサブスクはありませんでした" });
+    },
+    onError: (e: Error) => toast({ title: "エラー", description: e.message, variant: "destructive" }),
+  });
+
   const openCreate = () => {
     setEditingSub(null);
     setForm({
@@ -401,10 +413,21 @@ export default function Subscriptions() {
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-subscriptions-title">サブスクリプション</h1>
           <p className="text-muted-foreground text-sm mt-1">契約中のサービスを管理します</p>
         </div>
-        <Button onClick={openCreate} data-testid="button-add-subscription">
-          <Plus className="h-4 w-4 mr-1" />
-          追加
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => advanceBillingMutation.mutate()}
+            disabled={advanceBillingMutation.isPending}
+            data-testid="button-advance-billing-dates"
+          >
+            <RefreshCw className={`h-4 w-4 mr-1 ${advanceBillingMutation.isPending ? "animate-spin" : ""}`} />
+            次回課金日を一括更新
+          </Button>
+          <Button onClick={openCreate} data-testid="button-add-subscription">
+            <Plus className="h-4 w-4 mr-1" />
+            追加
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">

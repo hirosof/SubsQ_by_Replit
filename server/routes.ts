@@ -222,6 +222,16 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  app.post("/api/subscriptions/advance-billing-dates", isAuthenticated, async (_req, res) => {
+    try {
+      const count = await storage.advanceBillingDates();
+      res.json({ count });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "エラーが発生しました";
+      res.status(500).json({ message });
+    }
+  });
+
   app.post("/api/subscriptions/:id/apply-scheduled", isAuthenticated, async (req, res) => {
     const id = parseInt(req.params.id);
     const sub = await storage.getSubscription(id);
