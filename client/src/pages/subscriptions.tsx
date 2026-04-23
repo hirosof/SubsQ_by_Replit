@@ -226,7 +226,7 @@ export default function Subscriptions() {
 
   const advanceBillingMutation = useMutation<{ count: number }, Error>({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/subscriptions/advance-billing-dates");
+      const res = await apiRequest("POST", "/api/subscriptions/advance-billing-dates", {});
       return res.json() as Promise<{ count: number }>;
     },
     onSuccess: (data) => {
