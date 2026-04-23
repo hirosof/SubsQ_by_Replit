@@ -252,6 +252,7 @@ export default function Dashboard() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [actualMonthOpen, setActualMonthOpen] = useState(true);
+  const [actualNextMonthOpen, setActualNextMonthOpen] = useState(true);
   const { data: subscriptions, isLoading: subsLoading } = useQuery<Subscription[]>({
     queryKey: ["/api/subscriptions"],
   });
@@ -401,6 +402,20 @@ export default function Dashboard() {
   });
 
   const actualThisMonthTotal = actualThisMonthSubs.reduce(
+    (sum, s) => sum + s.amount * getRate(s.currency, rates), 0
+  );
+
+  const actualNextMonthSubs = activeSubs.filter(s => {
+    if (s.billingCycle === "monthly") return true;
+    return s.nextBillingDate &&
+      toDate(s.nextBillingDate) >= nextMonthStart && toDate(s.nextBillingDate) <= nextMonthEnd;
+  }).sort((a, b) => {
+    if (a.billingCycle === "monthly" && b.billingCycle !== "monthly") return -1;
+    if (a.billingCycle !== "monthly" && b.billingCycle === "monthly") return 1;
+    return (a.nextBillingDate || "").localeCompare(b.nextBillingDate || "");
+  });
+
+  const actualNextMonthTotal = actualNextMonthSubs.reduce(
     (sum, s) => sum + s.amount * getRate(s.currency, rates), 0
   );
 
@@ -836,6 +851,72 @@ export default function Dashboard() {
                       const isMonthly = sub.billingCycle === "monthly";
                       return (
                         <div key={sub.id} className="flex items-center justify-between gap-2 py-1.5 text-sm" data-testid={`row-actual-month-${sub.id}`}>
+                          <div className="flex items-center gap-2 min-w-0">
+                            {cat && <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />}
+                            <span className="truncate">{sub.serviceName}</span>
+                            {sub.planName && <span className="text-xs text-muted-foreground flex-shrink-0">({sub.planName})</span>}
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {isMonthly ? (
+                              <Badge variant="secondary" className="text-xs">月額</Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">{getCycleLabel(sub.billingCycle)}</span>
+                            )}
+                            {!isMonthly && sub.nextBillingDate && (
+                              <Badge variant="outline" className="text-xs">{formatDateShort(sub.nextBillingDate)}</Badge>
+                            )}
+                            <span className="font-medium text-right">
+                              {formatCurrency(sub.amount, sub.currency)}
+                              {sub.currency !== "JPY" && jpyAmount > 0 && (
+                                <span className="text-xs text-muted-foreground ml-1">({formatJpy(jpyAmount)})</span>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CollapsibleContent>
+              </CardContent>
+            </Card>
+          </Collapsible>
+        </div>
+      )}
+
+      {activeSubs.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold mb-3">来月の実請求予定（{nextMonthStart.getMonth() + 1}月）</h2>
+          <Collapsible open={actualNextMonthOpen} onOpenChange={setActualNextMonthOpen}>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-2xl font-bold" data-testid="text-actual-next-month-total">{formatJpy(actualNextMonthTotal)}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{actualNextMonthSubs.length}件のサブスクが対象</div>
+                  </div>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="sm" data-testid="button-toggle-actual-next-month">
+                      {actualNextMonthOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                    </Button>
+                  </CollapsibleTrigger>
+                </div>
+                {missingDateNonMonthlySubs.length > 0 && (
+                  <button
+                    className="mt-3 w-full text-left text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors"
+                    onClick={() => navigate("/subscriptions")}
+                    data-testid="warning-missing-billing-date-next-month"
+                  >
+                    ⚠ {missingDateNonMonthlySubs.length}件は次回課金日が未設定のため含まれていません。クリックして設定する →
+                  </button>
+                )}
+                <CollapsibleContent>
+                  <div className="mt-3 space-y-1 border-t pt-3">
+                    {actualNextMonthSubs.map(sub => {
+                      const cat = categories?.find(c => c.id === sub.categoryId);
+                      const jpyAmount = sub.amount * getRate(sub.currency, rates);
+                      const isMonthly = sub.billingCycle === "monthly";
+                      return (
+                        <div key={sub.id} className="flex items-center justify-between gap-2 py-1.5 text-sm" data-testid={`row-actual-next-month-${sub.id}`}>
                           <div className="flex items-center gap-2 min-w-0">
                             {cat && <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />}
                             <span className="truncate">{sub.serviceName}</span>
