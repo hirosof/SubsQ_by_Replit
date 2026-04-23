@@ -842,11 +842,13 @@ export default function Dashboard() {
                             {sub.planName && <span className="text-xs text-muted-foreground flex-shrink-0">({sub.planName})</span>}
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
+                            {isMonthly ? (
+                              <Badge variant="secondary" className="text-xs">月額</Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">{getCycleLabel(sub.billingCycle)}</span>
+                            )}
                             {!isMonthly && sub.nextBillingDate && (
                               <Badge variant="outline" className="text-xs">{formatDateShort(sub.nextBillingDate)}</Badge>
-                            )}
-                            {isMonthly && (
-                              <Badge variant="secondary" className="text-xs">月額</Badge>
                             )}
                             <span className="font-medium text-right">
                               {formatCurrency(sub.amount, sub.currency)}
