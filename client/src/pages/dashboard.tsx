@@ -288,86 +288,11 @@ export default function Dashboard() {
   const rates = exchangeRates || [];
   const activeSubs = subscriptions?.filter(s => s.isActive === 1) || [];
 
-  const totalMonthlyJpy = activeSubs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
-  const totalAnnualJpy = totalMonthlyJpy * 12;
-
-  const categorySummary = categories?.map(cat => {
-    const subs = activeSubs.filter(s => s.categoryId === cat.id);
-    const monthly = subs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
-    return { ...cat, count: subs.length, monthlyJpy: monthly };
-  }).filter(c => c.count > 0) || [];
-
-  const uncategorized = activeSubs.filter(s => !s.categoryId);
-  const uncategorizedMonthly = uncategorized.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
-
-  const currencyBreakdown: Record<string, { total: number; monthlyJpy: number }> = {};
-  activeSubs.forEach(s => {
-    const monthlyOriginal = s.amount * toMonthlyMultiplier(s.billingCycle);
-    if (!currencyBreakdown[s.currency]) {
-      currencyBreakdown[s.currency] = { total: 0, monthlyJpy: 0 };
-    }
-    currencyBreakdown[s.currency].total += monthlyOriginal;
-    currencyBreakdown[s.currency].monthlyJpy += monthlyJpy(s, rates);
-  });
-
-  const paymentMethodSummary = (paymentMethods || []).map(pm => {
-    const subs = activeSubs.filter(s => s.paymentMethodId === pm.id);
-    const monthly = subs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
-    const pmBillingAccounts = (billingAccounts || []).filter(ba => ba.paymentMethodId === pm.id);
-    const billingBreakdown = pmBillingAccounts.map(ba => {
-      const baSubs = subs.filter(s => s.billingAccountId === ba.id);
-      const baMonthly = baSubs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
-      return { ...ba, count: baSubs.length, monthlyJpy: baMonthly };
-    }).filter(b => b.count > 0);
-    const unassignedSubs = subs.filter(s => !s.billingAccountId);
-    const unassignedMonthly = unassignedSubs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
-    return { ...pm, count: subs.length, monthlyJpy: monthly, billingBreakdown, unassignedCount: unassignedSubs.length, unassignedMonthly };
-  }).filter(pm => pm.count > 0);
-
-  const noPaymentMethodSubs = activeSubs.filter(s => !s.paymentMethodId);
-  const noPaymentMethodMonthly = noPaymentMethodSubs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
-
-  const serviceGroupSummary = (serviceGroups || []).map(sg => {
-    const subs = activeSubs.filter(s => s.serviceGroupId === sg.id);
-    const monthly = subs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
-    return { ...sg, count: subs.length, monthlyJpy: monthly };
-  }).filter(g => g.count > 0);
-
-  const noGroupSubs = activeSubs.filter(s => !s.serviceGroupId);
-  const noGroupMonthly = noGroupSubs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
-
-  const abdSummary = (actualBillingDestinations || []).map(abd => {
-    const linkedBaIds = (billingAccounts || []).filter(ba => ba.actualBillingDestinationId === abd.id).map(ba => ba.id);
-    const subs = activeSubs.filter(s => s.billingAccountId && linkedBaIds.includes(s.billingAccountId));
-    const monthly = subs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
-    const breakdown = (billingAccounts || []).filter(ba => ba.actualBillingDestinationId === abd.id).map(ba => {
-      const pm = (paymentMethods || []).find(p => p.id === ba.paymentMethodId);
-      const baSubs = subs.filter(s => s.billingAccountId === ba.id);
-      const baMonthly = baSubs.reduce((sum, s) => sum + monthlyJpy(s, rates), 0);
-      return { ...ba, pmName: pm?.name || "", count: baSubs.length, monthlyJpy: baMonthly };
-    }).filter(b => b.count > 0);
-    return { ...abd, count: subs.length, monthlyJpy: monthly, breakdown };
-  }).filter(a => a.count > 0);
-
-  const missingRates = activeSubs
-    .filter(s => s.currency !== "JPY" && getRate(s.currency, rates) === 0)
-    .map(s => s.currency)
-    .filter((v, i, a) => a.indexOf(v) === i);
-
-  const isLongerThanMonthly = (cycle: string): boolean => {
-    if (cycle === "monthly") return false;
-    if (cycle === "annual") return true;
-    const match = cycle.match(/^(\d+)_(days|weeks|months|years)$/);
-    if (!match) return false;
-    const num = parseInt(match[1]);
-    switch (match[2]) {
-      case "days": return false;
-      case "weeks": return false;
-      case "months": return num > 1;
-      case "years": return true;
-    }
-    return false;
-  };
+  const now = new Date();
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const thisMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const nextMonthEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0);
 
   const isShorterThanMonthly = (cycle: string): boolean => {
     const match = cycle.match(/^(\d+)_(days|weeks)$/);
@@ -400,11 +325,96 @@ export default function Dashboard() {
     return count;
   };
 
-  const now = new Date();
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const thisMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const nextMonthEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+  const thisMonthActualJpy = (sub: typeof activeSubs[0]): number => {
+    if (isShorterThanMonthly(sub.billingCycle) && sub.nextBillingDate) {
+      const count = countOccurrencesInMonth(sub.nextBillingDate, sub.billingCycle, thisMonthStart, thisMonthEnd);
+      return sub.amount * getRate(sub.currency, rates) * count;
+    }
+    return monthlyJpy(sub, rates);
+  };
+
+  const totalMonthlyJpy = activeSubs.reduce((sum, s) => sum + thisMonthActualJpy(s), 0);
+  const totalAnnualJpy = totalMonthlyJpy * 12;
+
+  const categorySummary = categories?.map(cat => {
+    const subs = activeSubs.filter(s => s.categoryId === cat.id);
+    const monthly = subs.reduce((sum, s) => sum + thisMonthActualJpy(s), 0);
+    return { ...cat, count: subs.length, monthlyJpy: monthly };
+  }).filter(c => c.count > 0) || [];
+
+  const uncategorized = activeSubs.filter(s => !s.categoryId);
+  const uncategorizedMonthly = uncategorized.reduce((sum, s) => sum + thisMonthActualJpy(s), 0);
+
+  const currencyBreakdown: Record<string, { total: number; monthlyJpy: number }> = {};
+  activeSubs.forEach(s => {
+    const monthlyOriginal = isShorterThanMonthly(s.billingCycle) && s.nextBillingDate
+      ? s.amount * countOccurrencesInMonth(s.nextBillingDate, s.billingCycle, thisMonthStart, thisMonthEnd)
+      : s.amount * toMonthlyMultiplier(s.billingCycle);
+    if (!currencyBreakdown[s.currency]) {
+      currencyBreakdown[s.currency] = { total: 0, monthlyJpy: 0 };
+    }
+    currencyBreakdown[s.currency].total += monthlyOriginal;
+    currencyBreakdown[s.currency].monthlyJpy += thisMonthActualJpy(s);
+  });
+
+  const paymentMethodSummary = (paymentMethods || []).map(pm => {
+    const subs = activeSubs.filter(s => s.paymentMethodId === pm.id);
+    const monthly = subs.reduce((sum, s) => sum + thisMonthActualJpy(s), 0);
+    const pmBillingAccounts = (billingAccounts || []).filter(ba => ba.paymentMethodId === pm.id);
+    const billingBreakdown = pmBillingAccounts.map(ba => {
+      const baSubs = subs.filter(s => s.billingAccountId === ba.id);
+      const baMonthly = baSubs.reduce((sum, s) => sum + thisMonthActualJpy(s), 0);
+      return { ...ba, count: baSubs.length, monthlyJpy: baMonthly };
+    }).filter(b => b.count > 0);
+    const unassignedSubs = subs.filter(s => !s.billingAccountId);
+    const unassignedMonthly = unassignedSubs.reduce((sum, s) => sum + thisMonthActualJpy(s), 0);
+    return { ...pm, count: subs.length, monthlyJpy: monthly, billingBreakdown, unassignedCount: unassignedSubs.length, unassignedMonthly };
+  }).filter(pm => pm.count > 0);
+
+  const noPaymentMethodSubs = activeSubs.filter(s => !s.paymentMethodId);
+  const noPaymentMethodMonthly = noPaymentMethodSubs.reduce((sum, s) => sum + thisMonthActualJpy(s), 0);
+
+  const serviceGroupSummary = (serviceGroups || []).map(sg => {
+    const subs = activeSubs.filter(s => s.serviceGroupId === sg.id);
+    const monthly = subs.reduce((sum, s) => sum + thisMonthActualJpy(s), 0);
+    return { ...sg, count: subs.length, monthlyJpy: monthly };
+  }).filter(g => g.count > 0);
+
+  const noGroupSubs = activeSubs.filter(s => !s.serviceGroupId);
+  const noGroupMonthly = noGroupSubs.reduce((sum, s) => sum + thisMonthActualJpy(s), 0);
+
+  const abdSummary = (actualBillingDestinations || []).map(abd => {
+    const linkedBaIds = (billingAccounts || []).filter(ba => ba.actualBillingDestinationId === abd.id).map(ba => ba.id);
+    const subs = activeSubs.filter(s => s.billingAccountId && linkedBaIds.includes(s.billingAccountId));
+    const monthly = subs.reduce((sum, s) => sum + thisMonthActualJpy(s), 0);
+    const breakdown = (billingAccounts || []).filter(ba => ba.actualBillingDestinationId === abd.id).map(ba => {
+      const pm = (paymentMethods || []).find(p => p.id === ba.paymentMethodId);
+      const baSubs = subs.filter(s => s.billingAccountId === ba.id);
+      const baMonthly = baSubs.reduce((sum, s) => sum + thisMonthActualJpy(s), 0);
+      return { ...ba, pmName: pm?.name || "", count: baSubs.length, monthlyJpy: baMonthly };
+    }).filter(b => b.count > 0);
+    return { ...abd, count: subs.length, monthlyJpy: monthly, breakdown };
+  }).filter(a => a.count > 0);
+
+  const missingRates = activeSubs
+    .filter(s => s.currency !== "JPY" && getRate(s.currency, rates) === 0)
+    .map(s => s.currency)
+    .filter((v, i, a) => a.indexOf(v) === i);
+
+  const isLongerThanMonthly = (cycle: string): boolean => {
+    if (cycle === "monthly") return false;
+    if (cycle === "annual") return true;
+    const match = cycle.match(/^(\d+)_(days|weeks|months|years)$/);
+    if (!match) return false;
+    const num = parseInt(match[1]);
+    switch (match[2]) {
+      case "days": return false;
+      case "weeks": return false;
+      case "months": return num > 1;
+      case "years": return true;
+    }
+    return false;
+  };
 
   const toDate = (s: string) => new Date(s + "T00:00:00");
 
