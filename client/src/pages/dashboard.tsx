@@ -451,10 +451,25 @@ export default function Dashboard() {
     (sum, s) => sum + s.amount * getRate(s.currency, rates) * (thisMonthSubCounts.get(s.id) || 1), 0
   );
 
+  const nextMonthSubCounts = new Map<number, number>();
+
   const actualNextMonthSubs = activeSubs.filter(s => {
-    if (s.billingCycle === "monthly") return true;
-    return s.nextBillingDate &&
-      toDate(s.nextBillingDate) >= nextMonthStart && toDate(s.nextBillingDate) <= nextMonthEnd;
+    if (s.billingCycle === "monthly") {
+      nextMonthSubCounts.set(s.id, 1);
+      return true;
+    }
+    if (!s.nextBillingDate) return false;
+    if (isShorterThanMonthly(s.billingCycle)) {
+      const count = countOccurrencesInMonth(s.nextBillingDate, s.billingCycle, nextMonthStart, nextMonthEnd);
+      if (count > 0) {
+        nextMonthSubCounts.set(s.id, count);
+        return true;
+      }
+      return false;
+    }
+    const inMonth = toDate(s.nextBillingDate) >= nextMonthStart && toDate(s.nextBillingDate) <= nextMonthEnd;
+    if (inMonth) nextMonthSubCounts.set(s.id, 1);
+    return inMonth;
   }).sort((a, b) => {
     if (a.billingCycle === "monthly" && b.billingCycle !== "monthly") return -1;
     if (a.billingCycle !== "monthly" && b.billingCycle === "monthly") return 1;
@@ -462,7 +477,7 @@ export default function Dashboard() {
   });
 
   const actualNextMonthTotal = actualNextMonthSubs.reduce(
-    (sum, s) => sum + s.amount * getRate(s.currency, rates), 0
+    (sum, s) => sum + s.amount * getRate(s.currency, rates) * (nextMonthSubCounts.get(s.id) || 1), 0
   );
 
   const scheduledChangeSubs = (subscriptions || []).filter(s => s.scheduledAmount != null).sort((a, b) => {
@@ -974,8 +989,11 @@ export default function Dashboard() {
                   <div className="mt-3 space-y-1 border-t pt-3">
                     {actualNextMonthSubs.map(sub => {
                       const cat = categories?.find(c => c.id === sub.categoryId);
+                      const count = nextMonthSubCounts.get(sub.id) || 1;
                       const jpyAmount = sub.amount * getRate(sub.currency, rates);
+                      const totalJpyAmount = jpyAmount * count;
                       const isMonthly = sub.billingCycle === "monthly";
+                      const isShort = isShorterThanMonthly(sub.billingCycle);
                       return (
                         <div key={sub.id} className="flex items-center justify-between gap-2 py-1.5 text-sm" data-testid={`row-actual-next-month-${sub.id}`}>
                           <div className="flex items-center gap-2 min-w-0">
@@ -993,9 +1011,21 @@ export default function Dashboard() {
                               <Badge variant="outline" className="text-xs">{formatDateShort(sub.nextBillingDate)}</Badge>
                             )}
                             <span className="font-medium text-right">
-                              {formatCurrency(sub.amount, sub.currency)}
-                              {sub.currency !== "JPY" && jpyAmount > 0 && (
-                                <span className="text-xs text-muted-foreground ml-1">({formatJpy(jpyAmount)})</span>
+                              {isShort ? (
+                                <span className="flex flex-col items-end">
+                                  <span data-testid={`text-actual-next-month-total-${sub.id}`}>{formatJpy(totalJpyAmount)}</span>
+                                  <span className="text-xs text-muted-foreground font-normal" data-testid={`text-actual-next-month-breakdown-${sub.id}`}>
+                                    {count}回 × {formatCurrency(sub.amount, sub.currency)}
+                                    {sub.currency !== "JPY" && jpyAmount > 0 && ` (${formatJpy(jpyAmount)})`}
+                                  </span>
+                                </span>
+                              ) : (
+                                <>
+                                  {formatCurrency(sub.amount, sub.currency)}
+                                  {sub.currency !== "JPY" && jpyAmount > 0 && (
+                                    <span className="text-xs text-muted-foreground ml-1">({formatJpy(jpyAmount)})</span>
+                                  )}
+                                </>
                               )}
                             </span>
                           </div>
