@@ -369,6 +369,37 @@ export default function Dashboard() {
     return false;
   };
 
+  const isShorterThanMonthly = (cycle: string): boolean => {
+    const match = cycle.match(/^(\d+)_(days|weeks)$/);
+    return match !== null;
+  };
+
+  const getCycleIntervalDays = (cycle: string): number => {
+    const match = cycle.match(/^(\d+)_(days|weeks)$/);
+    if (!match) return 0;
+    const num = parseInt(match[1]);
+    return match[2] === "days" ? num : num * 7;
+  };
+
+  const countOccurrencesInMonth = (nextBillingDate: string, billingCycle: string, monthStart: Date, monthEnd: Date): number => {
+    const intervalDays = getCycleIntervalDays(billingCycle);
+    if (intervalDays === 0) return 1;
+    const intervalMs = intervalDays * 24 * 60 * 60 * 1000;
+    let current = new Date(nextBillingDate + "T00:00:00");
+    if (current > monthEnd) return 0;
+    if (current < monthStart) {
+      const diff = monthStart.getTime() - current.getTime();
+      const steps = Math.ceil(diff / intervalMs);
+      current = new Date(current.getTime() + steps * intervalMs);
+    }
+    let count = 0;
+    while (current <= monthEnd) {
+      count++;
+      current = new Date(current.getTime() + intervalMs);
+    }
+    return count;
+  };
+
   const now = new Date();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const thisMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -391,10 +422,25 @@ export default function Dashboard() {
     s.billingCycle !== "monthly" && !s.nextBillingDate
   );
 
+  const thisMonthSubCounts = new Map<number, number>();
+
   const actualThisMonthSubs = activeSubs.filter(s => {
-    if (s.billingCycle === "monthly") return true;
-    return s.nextBillingDate &&
-      toDate(s.nextBillingDate) >= thisMonthStart && toDate(s.nextBillingDate) <= thisMonthEnd;
+    if (s.billingCycle === "monthly") {
+      thisMonthSubCounts.set(s.id, 1);
+      return true;
+    }
+    if (!s.nextBillingDate) return false;
+    if (isShorterThanMonthly(s.billingCycle)) {
+      const count = countOccurrencesInMonth(s.nextBillingDate, s.billingCycle, thisMonthStart, thisMonthEnd);
+      if (count > 0) {
+        thisMonthSubCounts.set(s.id, count);
+        return true;
+      }
+      return false;
+    }
+    const inMonth = toDate(s.nextBillingDate) >= thisMonthStart && toDate(s.nextBillingDate) <= thisMonthEnd;
+    if (inMonth) thisMonthSubCounts.set(s.id, 1);
+    return inMonth;
   }).sort((a, b) => {
     if (a.billingCycle === "monthly" && b.billingCycle !== "monthly") return -1;
     if (a.billingCycle !== "monthly" && b.billingCycle === "monthly") return 1;
@@ -402,7 +448,7 @@ export default function Dashboard() {
   });
 
   const actualThisMonthTotal = actualThisMonthSubs.reduce(
-    (sum, s) => sum + s.amount * getRate(s.currency, rates), 0
+    (sum, s) => sum + s.amount * getRate(s.currency, rates) * (thisMonthSubCounts.get(s.id) || 1), 0
   );
 
   const actualNextMonthSubs = activeSubs.filter(s => {
@@ -847,8 +893,11 @@ export default function Dashboard() {
                   <div className="mt-3 space-y-1 border-t pt-3">
                     {actualThisMonthSubs.map(sub => {
                       const cat = categories?.find(c => c.id === sub.categoryId);
+                      const count = thisMonthSubCounts.get(sub.id) || 1;
                       const jpyAmount = sub.amount * getRate(sub.currency, rates);
+                      const totalJpyAmount = jpyAmount * count;
                       const isMonthly = sub.billingCycle === "monthly";
+                      const isShort = isShorterThanMonthly(sub.billingCycle);
                       return (
                         <div key={sub.id} className="flex items-center justify-between gap-2 py-1.5 text-sm" data-testid={`row-actual-month-${sub.id}`}>
                           <div className="flex items-center gap-2 min-w-0">
@@ -866,9 +915,21 @@ export default function Dashboard() {
                               <Badge variant="outline" className="text-xs">{formatDateShort(sub.nextBillingDate)}</Badge>
                             )}
                             <span className="font-medium text-right">
-                              {formatCurrency(sub.amount, sub.currency)}
-                              {sub.currency !== "JPY" && jpyAmount > 0 && (
-                                <span className="text-xs text-muted-foreground ml-1">({formatJpy(jpyAmount)})</span>
+                              {isShort ? (
+                                <span className="flex flex-col items-end">
+                                  <span data-testid={`text-actual-month-total-${sub.id}`}>{formatJpy(totalJpyAmount)}</span>
+                                  <span className="text-xs text-muted-foreground font-normal" data-testid={`text-actual-month-breakdown-${sub.id}`}>
+                                    {count}回 × {formatCurrency(sub.amount, sub.currency)}
+                                    {sub.currency !== "JPY" && jpyAmount > 0 && ` (${formatJpy(jpyAmount)})`}
+                                  </span>
+                                </span>
+                              ) : (
+                                <>
+                                  {formatCurrency(sub.amount, sub.currency)}
+                                  {sub.currency !== "JPY" && jpyAmount > 0 && (
+                                    <span className="text-xs text-muted-foreground ml-1">({formatJpy(jpyAmount)})</span>
+                                  )}
+                                </>
                               )}
                             </span>
                           </div>
