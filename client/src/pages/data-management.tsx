@@ -82,9 +82,9 @@ export default function DataManagement() {
     mutationFn: async (file: File) => {
       const text = await file.text();
       const res = await apiRequest("POST", "/api/subscriptions/import", { csv: text });
-      const data = await res.json() as { added: number; errors: string[] };
-      if (!res.ok) throw new Error((data as any).message || "インポートに失敗しました");
-      return data;
+      const data = await res.json() as { added?: number; errors?: string[]; message?: string };
+      if (!res.ok) throw new Error(data.message || "インポートに失敗しました");
+      return { added: data.added ?? 0, errors: data.errors ?? [] };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });

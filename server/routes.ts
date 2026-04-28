@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, type BackupPayload } from "./storage";
 import { insertCategorySchema, insertPaymentMethodSchema, insertActualBillingDestinationSchema, insertBillingAccountSchema, insertSubscriptionSchema, insertExchangeRateSchema, insertServiceGroupSchema } from "@shared/schema";
 import { isAuthenticated } from "./replit_integrations/auth";
 
@@ -287,37 +287,45 @@ export async function registerRoutes(
 
   app.post("/api/subscriptions/import", isAuthenticated, async (req, res) => {
     try {
-      const { csv } = req.body;
+      const body = req.body as { csv?: unknown };
+      const { csv } = body;
       if (!csv || typeof csv !== "string") {
         return res.status(400).json({ message: "CSVデータが必要です" });
       }
 
-      const parseCSVLine = (line: string): string[] => {
-        const fields: string[] = [];
+      const parseCSVAll = (text: string): string[][] => {
+        const rows: string[][] = [];
+        let row: string[] = [];
         let current = "";
         let inQuotes = false;
-        for (let i = 0; i < line.length; i++) {
-          const char = line[i];
-          if (char === '"') {
-            if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
-            else { inQuotes = !inQuotes; }
-          } else if (char === "," && !inQuotes) {
-            fields.push(current); current = "";
+        const src = text.replace(/^\uFEFF/, "");
+        for (let i = 0; i < src.length; i++) {
+          const ch = src[i];
+          if (inQuotes) {
+            if (ch === '"' && src[i + 1] === '"') { current += '"'; i++; }
+            else if (ch === '"') { inQuotes = false; }
+            else { current += ch; }
           } else {
-            current += char;
+            if (ch === '"') { inQuotes = true; }
+            else if (ch === ',') { row.push(current); current = ""; }
+            else if (ch === '\r' && src[i + 1] === '\n') {
+              row.push(current); current = ""; rows.push(row); row = []; i++;
+            } else if (ch === '\n' || ch === '\r') {
+              row.push(current); current = ""; rows.push(row); row = [];
+            } else { current += ch; }
           }
         }
-        fields.push(current);
-        return fields;
+        row.push(current);
+        if (row.some(f => f !== "")) rows.push(row);
+        return rows.filter(r => r.some(f => f !== ""));
       };
 
-      const normalized = csv.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-      const lines = normalized.split("\n").filter(l => l.trim() !== "");
-      if (lines.length < 2) {
+      const allRows = parseCSVAll(csv);
+      if (allRows.length < 2) {
         return res.status(400).json({ message: "CSVにデータ行がありません" });
       }
 
-      const headerLine = parseCSVLine(lines[0]);
+      const headerLine = allRows[0];
       const idx = (name: string) => headerLine.indexOf(name);
       const iServiceName = idx("サービス名");
       const iPlanName = idx("コース名");
@@ -351,9 +359,9 @@ export async function registerRoutes(
       let added = 0;
       const errors: string[] = [];
 
-      for (let i = 1; i < lines.length; i++) {
+      for (let i = 1; i < allRows.length; i++) {
         try {
-          const cols = parseCSVLine(lines[i]);
+          const cols = allRows[i];
           const serviceName = cols[iServiceName]?.trim();
           const amountStr = cols[iAmount]?.trim();
           if (!serviceName) { errors.push(`行${i + 1}: サービス名が空です`); continue; }
@@ -467,20 +475,21 @@ export async function registerRoutes(
 
   app.post("/api/data/restore", isAuthenticated, async (req, res) => {
     try {
-      const body = req.body;
-      if (!body || body.version !== "1" || !body.data) {
+      const body = req.body as { version?: unknown; data?: unknown };
+      if (!body || body.version !== "1" || !body.data || typeof body.data !== "object") {
         return res.status(400).json({ message: "バックアップファイルの形式が正しくありません（version: '1' が必要です）" });
       }
-      const { categories: cats, paymentMethods: pms, actualBillingDestinations: abds, billingAccounts: bas, serviceGroups: sgs, exchangeRates: ers, subscriptions: subs } = body.data;
-      await storage.restoreData({
-        cats: cats || [],
-        pms: pms || [],
-        abds: abds || [],
-        bas: bas || [],
-        sgs: sgs || [],
-        ers: ers || [],
-        subs: subs || [],
-      });
+      const raw = body.data as Record<string, unknown>;
+      const payload: BackupPayload = {
+        categories: Array.isArray(raw.categories) ? raw.categories : [],
+        paymentMethods: Array.isArray(raw.paymentMethods) ? raw.paymentMethods : [],
+        actualBillingDestinations: Array.isArray(raw.actualBillingDestinations) ? raw.actualBillingDestinations : [],
+        billingAccounts: Array.isArray(raw.billingAccounts) ? raw.billingAccounts : [],
+        serviceGroups: Array.isArray(raw.serviceGroups) ? raw.serviceGroups : [],
+        exchangeRates: Array.isArray(raw.exchangeRates) ? raw.exchangeRates : [],
+        subscriptions: Array.isArray(raw.subscriptions) ? raw.subscriptions : [],
+      };
+      await storage.restoreData(payload);
       res.json({ message: "復元が完了しました" });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "エラーが発生しました";
