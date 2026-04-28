@@ -285,7 +285,7 @@ export default function DataManagement() {
           </div>
           {importPreviewCount !== null && (
             <p className="text-sm text-muted-foreground" data-testid="text-import-preview">
-              {importPreviewCount}件のデータを読み込みました
+              約{importPreviewCount}件のデータを検出しました（引用符を含むフィールドがある場合、実際の件数と異なる場合があります）
             </p>
           )}
           <Button

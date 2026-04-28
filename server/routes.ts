@@ -394,7 +394,11 @@ export async function registerRoutes(
 
           let billingAccountId: number | null = null;
           const baName = iBillingAccount !== -1 ? cols[iBillingAccount]?.trim() : "";
-          if (baName && paymentMethodId) {
+          if (baName) {
+            if (!paymentMethodId) {
+              errors.push(`行${i + 1}: 請求先「${baName}」を設定するには支払い方法が必要です`);
+              continue;
+            }
             if (baByName.has(baName)) { billingAccountId = baByName.get(baName)!; }
             else {
               const row = await storage.createBillingAccount({ name: baName, paymentMethodId, actualBillingDestinationId: null });
@@ -480,14 +484,32 @@ export async function registerRoutes(
         return res.status(400).json({ message: "バックアップファイルの形式が正しくありません（version: '1' が必要です）" });
       }
       const raw = body.data as Record<string, unknown>;
+      const requiredKeys: (keyof BackupPayload)[] = ["categories", "paymentMethods", "actualBillingDestinations", "billingAccounts", "serviceGroups", "exchangeRates", "subscriptions"];
+      for (const key of requiredKeys) {
+        if (!Array.isArray(raw[key])) {
+          return res.status(400).json({ message: `バックアップデータに '${key}' 配列がありません。正しいバックアップファイルか確認してください。` });
+        }
+      }
+      const cats = raw.categories as BackupPayload["categories"];
+      const pms = raw.paymentMethods as BackupPayload["paymentMethods"];
+      if (cats.some((c) => typeof c.id !== "number" || typeof c.name !== "string")) {
+        return res.status(400).json({ message: "categories データの形式が正しくありません（id: number, name: string が必要）" });
+      }
+      if (pms.some((p) => typeof p.id !== "number" || typeof p.name !== "string")) {
+        return res.status(400).json({ message: "paymentMethods データの形式が正しくありません（id: number, name: string が必要）" });
+      }
+      const subs = raw.subscriptions as BackupPayload["subscriptions"];
+      if (subs.some((s) => typeof s.id !== "number" || typeof s.serviceName !== "string" || typeof s.amount !== "number")) {
+        return res.status(400).json({ message: "subscriptions データの形式が正しくありません（id, serviceName, amount が必要）" });
+      }
       const payload: BackupPayload = {
-        categories: Array.isArray(raw.categories) ? raw.categories : [],
-        paymentMethods: Array.isArray(raw.paymentMethods) ? raw.paymentMethods : [],
-        actualBillingDestinations: Array.isArray(raw.actualBillingDestinations) ? raw.actualBillingDestinations : [],
-        billingAccounts: Array.isArray(raw.billingAccounts) ? raw.billingAccounts : [],
-        serviceGroups: Array.isArray(raw.serviceGroups) ? raw.serviceGroups : [],
-        exchangeRates: Array.isArray(raw.exchangeRates) ? raw.exchangeRates : [],
-        subscriptions: Array.isArray(raw.subscriptions) ? raw.subscriptions : [],
+        categories: raw.categories as BackupPayload["categories"],
+        paymentMethods: raw.paymentMethods as BackupPayload["paymentMethods"],
+        actualBillingDestinations: raw.actualBillingDestinations as BackupPayload["actualBillingDestinations"],
+        billingAccounts: raw.billingAccounts as BackupPayload["billingAccounts"],
+        serviceGroups: raw.serviceGroups as BackupPayload["serviceGroups"],
+        exchangeRates: raw.exchangeRates as BackupPayload["exchangeRates"],
+        subscriptions: raw.subscriptions as BackupPayload["subscriptions"],
       };
       await storage.restoreData(payload);
       res.json({ message: "復元が完了しました" });
