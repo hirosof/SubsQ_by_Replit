@@ -54,6 +54,15 @@ export interface IStorage {
   updateSubscription(id: number, data: Partial<InsertSubscription>): Promise<Subscription | undefined>;
   deleteSubscription(id: number): Promise<void>;
   advanceBillingDates(): Promise<number>;
+  restoreData(data: {
+    cats: any[];
+    pms: any[];
+    abds: any[];
+    bas: any[];
+    sgs: any[];
+    ers: any[];
+    subs: any[];
+  }): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -271,6 +280,86 @@ export class DatabaseStorage implements IStorage {
     }
 
     return updatedCount;
+  }
+
+  async restoreData(data: {
+    cats: any[];
+    pms: any[];
+    abds: any[];
+    bas: any[];
+    sgs: any[];
+    ers: any[];
+    subs: any[];
+  }): Promise<void> {
+    await db.delete(subscriptions);
+    await db.delete(billingAccounts);
+    await db.delete(paymentMethods);
+    await db.delete(actualBillingDestinations);
+    await db.delete(categories);
+    await db.delete(serviceGroups);
+    await db.delete(exchangeRates);
+
+    const pmMap = new Map<number, number>();
+    for (const pm of (data.pms || [])) {
+      const [row] = await db.insert(paymentMethods).values({ name: pm.name, icon: pm.icon || "credit-card" }).returning();
+      pmMap.set(pm.id, row.id);
+    }
+
+    const abdMap = new Map<number, number>();
+    for (const abd of (data.abds || [])) {
+      const [row] = await db.insert(actualBillingDestinations).values({ name: abd.name, color: abd.color || "#10b981", sortOrder: abd.sortOrder ?? 0 }).returning();
+      abdMap.set(abd.id, row.id);
+    }
+
+    const catMap = new Map<number, number>();
+    for (const cat of (data.cats || [])) {
+      const [row] = await db.insert(categories).values({ name: cat.name, color: cat.color || "#3b82f6", icon: cat.icon || "folder", sortOrder: cat.sortOrder ?? 0 }).returning();
+      catMap.set(cat.id, row.id);
+    }
+
+    const sgMap = new Map<number, number>();
+    for (const sg of (data.sgs || [])) {
+      const [row] = await db.insert(serviceGroups).values({ name: sg.name, color: sg.color || "#6366f1", sortOrder: sg.sortOrder ?? 0 }).returning();
+      sgMap.set(sg.id, row.id);
+    }
+
+    const baMap = new Map<number, number>();
+    for (const ba of (data.bas || [])) {
+      const newPmId = pmMap.get(ba.paymentMethodId);
+      if (!newPmId) continue;
+      const newAbdId = ba.actualBillingDestinationId != null ? (abdMap.get(ba.actualBillingDestinationId) ?? null) : null;
+      const [row] = await db.insert(billingAccounts).values({ name: ba.name, paymentMethodId: newPmId, actualBillingDestinationId: newAbdId }).returning();
+      baMap.set(ba.id, row.id);
+    }
+
+    for (const er of (data.ers || [])) {
+      await db.insert(exchangeRates).values({ currency: er.currency, rateToJpy: er.rateToJpy });
+    }
+
+    for (const sub of (data.subs || [])) {
+      const newCatId = sub.categoryId != null ? (catMap.get(sub.categoryId) ?? null) : null;
+      const newPmId = sub.paymentMethodId != null ? (pmMap.get(sub.paymentMethodId) ?? null) : null;
+      const newBaId = sub.billingAccountId != null ? (baMap.get(sub.billingAccountId) ?? null) : null;
+      const newSgId = sub.serviceGroupId != null ? (sgMap.get(sub.serviceGroupId) ?? null) : null;
+      await db.insert(subscriptions).values({
+        serviceName: sub.serviceName,
+        serviceUrl: sub.serviceUrl ?? null,
+        planName: sub.planName ?? null,
+        billerName: sub.billerName ?? null,
+        amount: sub.amount,
+        currency: sub.currency || "JPY",
+        billingCycle: sub.billingCycle || "monthly",
+        categoryId: newCatId,
+        paymentMethodId: newPmId,
+        billingAccountId: newBaId,
+        serviceGroupId: newSgId,
+        note: sub.note ?? null,
+        nextBillingDate: sub.nextBillingDate ?? null,
+        scheduledAmount: sub.scheduledAmount ?? null,
+        scheduledDate: sub.scheduledDate ?? null,
+        isActive: sub.isActive ?? 1,
+      });
+    }
   }
 }
 

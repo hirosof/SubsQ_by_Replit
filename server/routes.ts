@@ -232,6 +232,262 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/subscriptions/export", isAuthenticated, async (_req, res) => {
+    try {
+      const [subs, cats, pms, bas, sgs] = await Promise.all([
+        storage.getSubscriptions(),
+        storage.getCategories(),
+        storage.getPaymentMethods(),
+        storage.getBillingAccounts(),
+        storage.getServiceGroups(),
+      ]);
+
+      const catMap = new Map(cats.map(c => [c.id, c.name]));
+      const pmMap = new Map(pms.map(p => [p.id, p.name]));
+      const baMap = new Map(bas.map(b => [b.id, b.name]));
+      const sgMap = new Map(sgs.map(g => [g.id, g.name]));
+
+      const escCsv = (val: string | null | undefined): string => {
+        if (val == null || val === "") return "";
+        if (val.includes(",") || val.includes('"') || val.includes("\n")) {
+          return `"${val.replace(/"/g, '""')}"`;
+        }
+        return val;
+      };
+
+      const headers = ["サービス名", "コース名", "金額", "通貨", "課金サイクル", "次回課金日", "カテゴリ", "支払い方法", "請求先", "サービスグループ", "請求者名", "サービスURL", "メモ", "ステータス"];
+      const rows = subs.map(sub => [
+        escCsv(sub.serviceName),
+        escCsv(sub.planName),
+        String(sub.amount),
+        sub.currency,
+        sub.billingCycle,
+        sub.nextBillingDate || "",
+        escCsv(sub.categoryId != null ? catMap.get(sub.categoryId) : null),
+        escCsv(sub.paymentMethodId != null ? pmMap.get(sub.paymentMethodId) : null),
+        escCsv(sub.billingAccountId != null ? baMap.get(sub.billingAccountId) : null),
+        escCsv(sub.serviceGroupId != null ? sgMap.get(sub.serviceGroupId) : null),
+        escCsv(sub.billerName),
+        escCsv(sub.serviceUrl),
+        escCsv(sub.note),
+        sub.isActive === 1 ? "有効" : "停止中",
+      ]);
+
+      const BOM = "\uFEFF";
+      const csv = BOM + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+      const filename = `subsq-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.send(csv);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "エラーが発生しました";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.post("/api/subscriptions/import", isAuthenticated, async (req, res) => {
+    try {
+      const { csv } = req.body;
+      if (!csv || typeof csv !== "string") {
+        return res.status(400).json({ message: "CSVデータが必要です" });
+      }
+
+      const parseCSVLine = (line: string): string[] => {
+        const fields: string[] = [];
+        let current = "";
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const char = line[i];
+          if (char === '"') {
+            if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+            else { inQuotes = !inQuotes; }
+          } else if (char === "," && !inQuotes) {
+            fields.push(current); current = "";
+          } else {
+            current += char;
+          }
+        }
+        fields.push(current);
+        return fields;
+      };
+
+      const normalized = csv.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      const lines = normalized.split("\n").filter(l => l.trim() !== "");
+      if (lines.length < 2) {
+        return res.status(400).json({ message: "CSVにデータ行がありません" });
+      }
+
+      const headerLine = parseCSVLine(lines[0]);
+      const idx = (name: string) => headerLine.indexOf(name);
+      const iServiceName = idx("サービス名");
+      const iPlanName = idx("コース名");
+      const iAmount = idx("金額");
+      const iCurrency = idx("通貨");
+      const iBillingCycle = idx("課金サイクル");
+      const iNextBillingDate = idx("次回課金日");
+      const iCategory = idx("カテゴリ");
+      const iPaymentMethod = idx("支払い方法");
+      const iBillingAccount = idx("請求先");
+      const iServiceGroup = idx("サービスグループ");
+      const iBillerName = idx("請求者名");
+      const iServiceUrl = idx("サービスURL");
+      const iNote = idx("メモ");
+      const iStatus = idx("ステータス");
+
+      if (iServiceName === -1 || iAmount === -1) {
+        return res.status(400).json({ message: "CSVに必須列（サービス名・金額）がありません" });
+      }
+
+      const existingCats = await storage.getCategories();
+      const existingPms = await storage.getPaymentMethods();
+      const existingBas = await storage.getBillingAccounts();
+      const existingSgs = await storage.getServiceGroups();
+
+      const catByName = new Map(existingCats.map(c => [c.name, c.id]));
+      const pmByName = new Map(existingPms.map(p => [p.name, p.id]));
+      const baByName = new Map(existingBas.map(b => [b.name, b.id]));
+      const sgByName = new Map(existingSgs.map(g => [g.name, g.id]));
+
+      let added = 0;
+      const errors: string[] = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        try {
+          const cols = parseCSVLine(lines[i]);
+          const serviceName = cols[iServiceName]?.trim();
+          const amountStr = cols[iAmount]?.trim();
+          if (!serviceName) { errors.push(`行${i + 1}: サービス名が空です`); continue; }
+          const amount = parseFloat(amountStr);
+          if (isNaN(amount)) { errors.push(`行${i + 1}: 金額が不正です (${amountStr})`); continue; }
+
+          const currency = (iCurrency !== -1 && cols[iCurrency]?.trim()) ? cols[iCurrency].trim() : "JPY";
+          const billingCycle = (iBillingCycle !== -1 && cols[iBillingCycle]?.trim()) ? cols[iBillingCycle].trim() : "monthly";
+          const nextBillingDate = (iNextBillingDate !== -1 && cols[iNextBillingDate]?.trim()) ? cols[iNextBillingDate].trim() : null;
+
+          let categoryId: number | null = null;
+          const catName = iCategory !== -1 ? cols[iCategory]?.trim() : "";
+          if (catName) {
+            if (catByName.has(catName)) { categoryId = catByName.get(catName)!; }
+            else {
+              const row = await storage.createCategory({ name: catName, color: "#3b82f6", icon: "folder", sortOrder: 0 });
+              catByName.set(catName, row.id); categoryId = row.id;
+            }
+          }
+
+          let paymentMethodId: number | null = null;
+          const pmName = iPaymentMethod !== -1 ? cols[iPaymentMethod]?.trim() : "";
+          if (pmName) {
+            if (pmByName.has(pmName)) { paymentMethodId = pmByName.get(pmName)!; }
+            else {
+              const row = await storage.createPaymentMethod({ name: pmName, icon: "credit-card" });
+              pmByName.set(pmName, row.id); paymentMethodId = row.id;
+            }
+          }
+
+          let billingAccountId: number | null = null;
+          const baName = iBillingAccount !== -1 ? cols[iBillingAccount]?.trim() : "";
+          if (baName && paymentMethodId) {
+            if (baByName.has(baName)) { billingAccountId = baByName.get(baName)!; }
+            else {
+              const row = await storage.createBillingAccount({ name: baName, paymentMethodId, actualBillingDestinationId: null });
+              baByName.set(baName, row.id); billingAccountId = row.id;
+            }
+          }
+
+          let serviceGroupId: number | null = null;
+          const sgName = iServiceGroup !== -1 ? cols[iServiceGroup]?.trim() : "";
+          if (sgName) {
+            if (sgByName.has(sgName)) { serviceGroupId = sgByName.get(sgName)!; }
+            else {
+              const row = await storage.createServiceGroup({ name: sgName, color: "#6366f1", sortOrder: 0 });
+              sgByName.set(sgName, row.id); serviceGroupId = row.id;
+            }
+          }
+
+          const statusStr = iStatus !== -1 ? cols[iStatus]?.trim() : "";
+          const isActive = statusStr === "停止中" ? 0 : 1;
+
+          await storage.createSubscription({
+            serviceName,
+            planName: (iPlanName !== -1 && cols[iPlanName]?.trim()) ? cols[iPlanName].trim() : null,
+            billerName: (iBillerName !== -1 && cols[iBillerName]?.trim()) ? cols[iBillerName].trim() : null,
+            serviceUrl: (iServiceUrl !== -1 && cols[iServiceUrl]?.trim()) ? cols[iServiceUrl].trim() : null,
+            note: (iNote !== -1 && cols[iNote]?.trim()) ? cols[iNote].trim() : null,
+            amount,
+            currency,
+            billingCycle,
+            nextBillingDate,
+            categoryId,
+            paymentMethodId,
+            billingAccountId,
+            serviceGroupId,
+            scheduledAmount: null,
+            scheduledDate: null,
+            isActive,
+          });
+          added++;
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : "不明なエラー";
+          errors.push(`行${i + 1}: ${msg}`);
+        }
+      }
+
+      res.json({ added, errors });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "エラーが発生しました";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.get("/api/data/backup", isAuthenticated, async (_req, res) => {
+    try {
+      const [cats, pms, abds, bas, sgs, ers, subs] = await Promise.all([
+        storage.getCategories(),
+        storage.getPaymentMethods(),
+        storage.getActualBillingDestinations(),
+        storage.getBillingAccounts(),
+        storage.getServiceGroups(),
+        storage.getExchangeRates(),
+        storage.getSubscriptions(),
+      ]);
+      const backup = {
+        version: "1",
+        exportedAt: new Date().toISOString(),
+        data: { categories: cats, paymentMethods: pms, actualBillingDestinations: abds, billingAccounts: bas, serviceGroups: sgs, exchangeRates: ers, subscriptions: subs },
+      };
+      const filename = `subsq-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.json(backup);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "エラーが発生しました";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.post("/api/data/restore", isAuthenticated, async (req, res) => {
+    try {
+      const body = req.body;
+      if (!body || body.version !== "1" || !body.data) {
+        return res.status(400).json({ message: "バックアップファイルの形式が正しくありません（version: '1' が必要です）" });
+      }
+      const { categories: cats, paymentMethods: pms, actualBillingDestinations: abds, billingAccounts: bas, serviceGroups: sgs, exchangeRates: ers, subscriptions: subs } = body.data;
+      await storage.restoreData({
+        cats: cats || [],
+        pms: pms || [],
+        abds: abds || [],
+        bas: bas || [],
+        sgs: sgs || [],
+        ers: ers || [],
+        subs: subs || [],
+      });
+      res.json({ message: "復元が完了しました" });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "エラーが発生しました";
+      res.status(500).json({ message });
+    }
+  });
+
   app.post("/api/subscriptions/:id/apply-scheduled", isAuthenticated, async (req, res) => {
     const id = parseInt(req.params.id);
     const sub = await storage.getSubscription(id);
