@@ -4,6 +4,33 @@ import { storage, type BackupPayload } from "./storage";
 import { insertCategorySchema, insertPaymentMethodSchema, insertActualBillingDestinationSchema, insertBillingAccountSchema, insertSubscriptionSchema, insertExchangeRateSchema, insertServiceGroupSchema } from "@shared/schema";
 import { isAuthenticated } from "./replit_integrations/auth";
 
+function parseCSVAll(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  const src = text.replace(/^\uFEFF/, "");
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (inQuotes) {
+      if (ch === '"' && src[i + 1] === '"') { current += '"'; i++; }
+      else if (ch === '"') { inQuotes = false; }
+      else { current += ch; }
+    } else {
+      if (ch === '"') { inQuotes = true; }
+      else if (ch === ',') { row.push(current); current = ""; }
+      else if (ch === '\r' && src[i + 1] === '\n') {
+        row.push(current); current = ""; rows.push(row); row = []; i++;
+      } else if (ch === '\n' || ch === '\r') {
+        row.push(current); current = ""; rows.push(row); row = [];
+      } else { current += ch; }
+    }
+  }
+  row.push(current);
+  if (row.some(f => f !== "")) rows.push(row);
+  return rows.filter(r => r.some(f => f !== ""));
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -286,7 +313,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/subscriptions/import", isAuthenticated, async (req, res) => {
+  app.post("/api/subscriptions/import-preview", isAuthenticated, async (req, res) => {
     try {
       const body = req.body as { csv?: unknown };
       const { csv } = body;
@@ -294,32 +321,170 @@ export async function registerRoutes(
         return res.status(400).json({ message: "CSVデータが必要です" });
       }
 
-      const parseCSVAll = (text: string): string[][] => {
-        const rows: string[][] = [];
-        let row: string[] = [];
-        let current = "";
-        let inQuotes = false;
-        const src = text.replace(/^\uFEFF/, "");
-        for (let i = 0; i < src.length; i++) {
-          const ch = src[i];
-          if (inQuotes) {
-            if (ch === '"' && src[i + 1] === '"') { current += '"'; i++; }
-            else if (ch === '"') { inQuotes = false; }
-            else { current += ch; }
-          } else {
-            if (ch === '"') { inQuotes = true; }
-            else if (ch === ',') { row.push(current); current = ""; }
-            else if (ch === '\r' && src[i + 1] === '\n') {
-              row.push(current); current = ""; rows.push(row); row = []; i++;
-            } else if (ch === '\n' || ch === '\r') {
-              row.push(current); current = ""; rows.push(row); row = [];
-            } else { current += ch; }
-          }
-        }
-        row.push(current);
-        if (row.some(f => f !== "")) rows.push(row);
-        return rows.filter(r => r.some(f => f !== ""));
+      const allRows = parseCSVAll(csv);
+      if (allRows.length < 2) {
+        return res.status(400).json({ message: "CSVにデータ行がありません" });
+      }
+
+      const headerLine = allRows[0];
+      const idx = (name: string) => headerLine.indexOf(name);
+      const iServiceName = idx("サービス名");
+      const iAmount = idx("金額");
+      const iCurrency = idx("通貨");
+      const iBillingCycle = idx("課金サイクル");
+      const iNextBillingDate = idx("次回課金日");
+      const iCategory = idx("カテゴリ");
+      const iPaymentMethod = idx("支払い方法");
+      const iBillingAccount = idx("請求先");
+      const iServiceGroup = idx("サービスグループ");
+      const iBillerName = idx("請求者名");
+      const iServiceUrl = idx("サービスURL");
+      const iNote = idx("メモ");
+      const iStatus = idx("ステータス");
+      const iPlanName = idx("コース名");
+
+      if (iServiceName === -1 || iAmount === -1) {
+        return res.status(400).json({ message: "CSVに必須列（サービス名・金額）がありません" });
+      }
+
+      const iMgmtId = idx("管理ID");
+
+      const [existingCats, existingPms, existingBas, existingSgs, existingSubs] = await Promise.all([
+        storage.getCategories(),
+        storage.getPaymentMethods(),
+        storage.getBillingAccounts(),
+        storage.getServiceGroups(),
+        storage.getSubscriptions(),
+      ]);
+
+      const catByName = new Map(existingCats.map(c => [c.name, c.id]));
+      const pmByName = new Map(existingPms.map(p => [p.name, p.id]));
+      const baByName = new Map(existingBas.map(b => [b.name, b.id]));
+      const sgByName = new Map(existingSgs.map(g => [g.name, g.id]));
+      const subByMgmtId = new Map(existingSubs.filter(s => s.managementId).map(s => [s.managementId!, s]));
+
+      let nextFakeId = -1;
+      const getFakeOrReal = (map: Map<string, number>, name: string): number => {
+        if (map.has(name)) return map.get(name)!;
+        const fakeId = nextFakeId--;
+        map.set(name, fakeId);
+        return fakeId;
       };
+
+      let added = 0;
+      let updated = 0;
+      let skipped = 0;
+      const errors: string[] = [];
+
+      for (let i = 1; i < allRows.length; i++) {
+        try {
+          const cols = allRows[i];
+          const csvMgmtId = (iMgmtId !== -1 && cols[iMgmtId]?.trim()) ? cols[iMgmtId].trim() : null;
+          const serviceName = cols[iServiceName]?.trim();
+          const amountStr = cols[iAmount]?.trim();
+          if (!serviceName) { errors.push(`行${i + 1}: サービス名が空です`); continue; }
+          const amount = parseFloat(amountStr);
+          if (isNaN(amount)) { errors.push(`行${i + 1}: 金額が不正です (${amountStr})`); continue; }
+
+          const currency = (iCurrency !== -1 && cols[iCurrency]?.trim()) ? cols[iCurrency].trim() : "JPY";
+          const billingCycle = (iBillingCycle !== -1 && cols[iBillingCycle]?.trim()) ? cols[iBillingCycle].trim() : "monthly";
+          const nextBillingDate = (iNextBillingDate !== -1 && cols[iNextBillingDate]?.trim()) ? cols[iNextBillingDate].trim() : null;
+
+          const catName = iCategory !== -1 ? cols[iCategory]?.trim() : "";
+          const categoryId: number | null = catName ? getFakeOrReal(catByName, catName) : null;
+
+          const pmName = iPaymentMethod !== -1 ? cols[iPaymentMethod]?.trim() : "";
+          let paymentMethodId: number | null = null;
+          if (pmName) {
+            paymentMethodId = getFakeOrReal(pmByName, pmName);
+          }
+
+          const baName = iBillingAccount !== -1 ? cols[iBillingAccount]?.trim() : "";
+          let billingAccountId: number | null = null;
+          if (baName) {
+            if (!paymentMethodId) {
+              errors.push(`行${i + 1}: 請求先「${baName}」を設定するには支払い方法が必要です`);
+              continue;
+            }
+            billingAccountId = getFakeOrReal(baByName, baName);
+          }
+
+          const sgName = iServiceGroup !== -1 ? cols[iServiceGroup]?.trim() : "";
+          const serviceGroupId: number | null = sgName ? getFakeOrReal(sgByName, sgName) : null;
+
+          const statusStr = iStatus !== -1 ? cols[iStatus]?.trim() : "";
+          const isActive = statusStr === "停止中" ? 0 : 1;
+
+          const planName = (iPlanName !== -1 && cols[iPlanName]?.trim()) ? cols[iPlanName].trim() : null;
+          const billerName = (iBillerName !== -1 && cols[iBillerName]?.trim()) ? cols[iBillerName].trim() : null;
+          const serviceUrl = (iServiceUrl !== -1 && cols[iServiceUrl]?.trim()) ? cols[iServiceUrl].trim() : null;
+          const note = (iNote !== -1 && cols[iNote]?.trim()) ? cols[iNote].trim() : null;
+
+          const payload = {
+            serviceName, planName, billerName, serviceUrl, note,
+            amount, currency, billingCycle, nextBillingDate,
+            categoryId, paymentMethodId, billingAccountId, serviceGroupId,
+            isActive,
+          };
+
+          if (csvMgmtId && subByMgmtId.has(csvMgmtId)) {
+            const existing = subByMgmtId.get(csvMgmtId)!;
+            const existingCatId = existing.categoryId ?? null;
+            const existingPmId = existing.paymentMethodId ?? null;
+            const existingBaId = existing.billingAccountId ?? null;
+            const existingSgId = existing.serviceGroupId ?? null;
+            const resolvedCatId = categoryId !== null && categoryId < 0 ? null : categoryId;
+            const resolvedPmId = paymentMethodId !== null && paymentMethodId < 0 ? null : paymentMethodId;
+            const resolvedBaId = billingAccountId !== null && billingAccountId < 0 ? null : billingAccountId;
+            const resolvedSgId = serviceGroupId !== null && serviceGroupId < 0 ? null : serviceGroupId;
+            const newCatNeeded = catName && categoryId !== null && categoryId < 0;
+            const newPmNeeded = pmName && paymentMethodId !== null && paymentMethodId < 0;
+            const newBaNeeded = baName && billingAccountId !== null && billingAccountId < 0;
+            const newSgNeeded = sgName && serviceGroupId !== null && serviceGroupId < 0;
+            const isSame =
+              !newCatNeeded && !newPmNeeded && !newBaNeeded && !newSgNeeded &&
+              existing.serviceName === payload.serviceName &&
+              (existing.planName ?? null) === payload.planName &&
+              (existing.billerName ?? null) === payload.billerName &&
+              (existing.serviceUrl ?? null) === payload.serviceUrl &&
+              (existing.note ?? null) === payload.note &&
+              existing.amount === payload.amount &&
+              existing.currency === payload.currency &&
+              existing.billingCycle === payload.billingCycle &&
+              (existing.nextBillingDate ?? null) === payload.nextBillingDate &&
+              existingCatId === resolvedCatId &&
+              existingPmId === resolvedPmId &&
+              existingBaId === resolvedBaId &&
+              existingSgId === resolvedSgId &&
+              existing.isActive === payload.isActive;
+            if (isSame) {
+              skipped++;
+            } else {
+              updated++;
+            }
+          } else {
+            added++;
+          }
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : "不明なエラー";
+          errors.push(`行${i + 1}: ${msg}`);
+        }
+      }
+
+      res.json({ added, updated, skipped, errors });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "エラーが発生しました";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.post("/api/subscriptions/import", isAuthenticated, async (req, res) => {
+    try {
+      const body = req.body as { csv?: unknown };
+      const { csv } = body;
+      if (!csv || typeof csv !== "string") {
+        return res.status(400).json({ message: "CSVデータが必要です" });
+      }
 
       const allRows = parseCSVAll(csv);
       if (allRows.length < 2) {

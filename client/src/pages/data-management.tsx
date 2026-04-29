@@ -3,10 +3,11 @@ import { useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
-import { Download, Upload, FileJson, FileSpreadsheet, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
+import { Download, Upload, FileJson, FileSpreadsheet, ChevronDown, ChevronRight, AlertTriangle, Eye } from "lucide-react";
 
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -27,7 +28,8 @@ export default function DataManagement() {
   const restoreInputRef = useRef<HTMLInputElement>(null);
 
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [importPreviewCount, setImportPreviewCount] = useState<number | null>(null);
+  const [importPreview, setImportPreview] = useState<{ added: number; updated: number; skipped: number; errors: string[] } | null>(null);
+  const [importConfirmOpen, setImportConfirmOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const [specOpen, setSpecOpen] = useState(false);
@@ -78,6 +80,23 @@ export default function DataManagement() {
     onError: (e: Error) => toast({ title: "エラー", description: e.message, variant: "destructive" }),
   });
 
+  const previewMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const text = await file.text();
+      const res = await apiRequest("POST", "/api/subscriptions/import-preview", { csv: text });
+      const data = await res.json() as { added?: number; updated?: number; skipped?: number; errors?: string[]; message?: string };
+      if (!res.ok) throw new Error(data.message || "プレビューの取得に失敗しました");
+      return { added: data.added ?? 0, updated: data.updated ?? 0, skipped: data.skipped ?? 0, errors: data.errors ?? [] };
+    },
+    onSuccess: (data) => {
+      setImportPreview(data);
+    },
+    onError: (e: Error) => {
+      setImportPreview(null);
+      toast({ title: "プレビューエラー", description: e.message, variant: "destructive" });
+    },
+  });
+
   const importMutation = useMutation({
     mutationFn: async (file: File) => {
       const text = await file.text();
@@ -89,7 +108,7 @@ export default function DataManagement() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
       setImportFile(null);
-      setImportPreviewCount(null);
+      setImportPreview(null);
       if (importInputRef.current) importInputRef.current.value = "";
       const parts: string[] = [];
       if (data.added > 0) parts.push(`${data.added}件追加`);
@@ -107,19 +126,12 @@ export default function DataManagement() {
     setRestoreFile(file);
   };
 
-  const handleImportFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
     setImportFile(file);
-    setImportPreviewCount(null);
+    setImportPreview(null);
     if (file) {
-      try {
-        const text = await file.text();
-        const normalized = text.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-        const lines = normalized.split("\n").filter(l => l.trim() !== "");
-        setImportPreviewCount(Math.max(0, lines.length - 1));
-      } catch {
-        setImportPreviewCount(null);
-      }
+      previewMutation.mutate(file);
     }
   };
 
@@ -285,22 +297,68 @@ export default function DataManagement() {
               </Button>
             </label>
             {importFile && (
-              <span className="text-sm text-muted-foreground truncate max-w-xs">{importFile.name}</span>
+              <span className="text-sm text-muted-foreground truncate max-w-xs" data-testid="text-import-filename">{importFile.name}</span>
             )}
           </div>
-          {importPreviewCount !== null && (
-            <p className="text-sm text-muted-foreground" data-testid="text-import-preview">
-              約{importPreviewCount}件のデータを検出しました（引用符を含むフィールドがある場合、実際の件数と異なる場合があります）
+          {previewMutation.isPending && (
+            <p className="text-sm text-muted-foreground" data-testid="text-import-preview-loading">
+              プレビューを取得中...
             </p>
           )}
-          <Button
-            disabled={!importFile || importMutation.isPending}
-            onClick={() => importFile && importMutation.mutate(importFile)}
-            data-testid="button-import"
-          >
-            <Upload className="h-4 w-4 mr-2" />
-            {importMutation.isPending ? "インポート中..." : "インポートする"}
-          </Button>
+          {importPreview && (
+            <div className="rounded-md border bg-muted/40 p-4 space-y-3" data-testid="section-import-preview">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Eye className="h-4 w-4 text-primary" />
+                インポートプレビュー
+              </div>
+              <div className="flex flex-wrap gap-2" data-testid="preview-counts">
+                <Badge variant="default" className="gap-1" data-testid="badge-preview-added">
+                  追加: {importPreview.added}件
+                </Badge>
+                <Badge variant="secondary" className="gap-1" data-testid="badge-preview-updated">
+                  更新: {importPreview.updated}件
+                </Badge>
+                <Badge variant="outline" className="gap-1" data-testid="badge-preview-skipped">
+                  スキップ: {importPreview.skipped}件
+                </Badge>
+              </div>
+              {importPreview.errors.length > 0 && (
+                <div className="text-xs text-destructive space-y-0.5" data-testid="preview-errors">
+                  <p className="font-medium">{importPreview.errors.length}件のエラーがあります:</p>
+                  {importPreview.errors.slice(0, 5).map((err, i) => (
+                    <p key={i} data-testid={`preview-error-${i}`}>{err}</p>
+                  ))}
+                  {importPreview.errors.length > 5 && (
+                    <p>…他 {importPreview.errors.length - 5}件</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              disabled={!importFile || !importPreview || importMutation.isPending || previewMutation.isPending}
+              onClick={() => setImportConfirmOpen(true)}
+              data-testid="button-import"
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              {importMutation.isPending ? "インポート中..." : "インポートする"}
+            </Button>
+            {importFile && (
+              <Button
+                variant="ghost"
+                disabled={importMutation.isPending}
+                onClick={() => {
+                  setImportFile(null);
+                  setImportPreview(null);
+                  if (importInputRef.current) importInputRef.current.value = "";
+                }}
+                data-testid="button-import-cancel"
+              >
+                キャンセル
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -334,6 +392,41 @@ export default function DataManagement() {
           </div>
         </CollapsibleContent>
       </Collapsible>
+
+      <AlertDialog open={importConfirmOpen} onOpenChange={setImportConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>インポートを実行しますか？</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>以下の内容でインポートが実行されます。</p>
+                {importPreview && (
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="default" data-testid="dialog-badge-added">追加: {importPreview.added}件</Badge>
+                    <Badge variant="secondary" data-testid="dialog-badge-updated">更新: {importPreview.updated}件</Badge>
+                    <Badge variant="outline" data-testid="dialog-badge-skipped">スキップ: {importPreview.skipped}件</Badge>
+                  </div>
+                )}
+                {importPreview && importPreview.errors.length > 0 && (
+                  <p className="text-destructive text-xs">{importPreview.errors.length}件の行はエラーのためスキップされます。</p>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-import-confirm-cancel">キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setImportConfirmOpen(false);
+                if (importFile) importMutation.mutate(importFile);
+              }}
+              data-testid="button-import-confirm-execute"
+            >
+              実行する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={restoreDialogOpen} onOpenChange={setRestoreDialogOpen}>
         <AlertDialogContent>
