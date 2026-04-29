@@ -160,6 +160,7 @@ export default function DataManagement() {
     "subscriptions": [
       {
         "id": 9,
+        "managementId": "ab3x9kq2",
         "serviceName": "GitHub Copilot",
         "serviceUrl": "https://github.com/features/copilot",
         "planName": "Pro",
