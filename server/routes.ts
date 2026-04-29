@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage, type BackupPayload } from "./storage";
+import { storage, type BackupPayload, generateSubId } from "./storage";
 import { insertCategorySchema, insertPaymentMethodSchema, insertActualBillingDestinationSchema, insertBillingAccountSchema, insertSubscriptionSchema, insertExchangeRateSchema, insertServiceGroupSchema } from "@shared/schema";
 import { isAuthenticated } from "./replit_integrations/auth";
 
@@ -255,8 +255,9 @@ export async function registerRoutes(
         return val;
       };
 
-      const headers = ["サービス名", "コース名", "金額", "通貨", "課金サイクル", "次回課金日", "カテゴリ", "支払い方法", "請求先", "サービスグループ", "請求者名", "サービスURL", "メモ", "ステータス"];
+      const headers = ["管理ID", "サービス名", "コース名", "金額", "通貨", "課金サイクル", "次回課金日", "カテゴリ", "支払い方法", "請求先", "サービスグループ", "請求者名", "サービスURL", "メモ", "ステータス"];
       const rows = subs.map(sub => [
+        sub.managementId || "",
         escCsv(sub.serviceName),
         escCsv(sub.planName),
         String(sub.amount),
@@ -346,22 +347,31 @@ export async function registerRoutes(
         return res.status(400).json({ message: "CSVに必須列（サービス名・金額）がありません" });
       }
 
-      const existingCats = await storage.getCategories();
-      const existingPms = await storage.getPaymentMethods();
-      const existingBas = await storage.getBillingAccounts();
-      const existingSgs = await storage.getServiceGroups();
+      const iMgmtId = idx("管理ID");
+
+      const [existingCats, existingPms, existingBas, existingSgs, existingSubs] = await Promise.all([
+        storage.getCategories(),
+        storage.getPaymentMethods(),
+        storage.getBillingAccounts(),
+        storage.getServiceGroups(),
+        storage.getSubscriptions(),
+      ]);
 
       const catByName = new Map(existingCats.map(c => [c.name, c.id]));
       const pmByName = new Map(existingPms.map(p => [p.name, p.id]));
       const baByName = new Map(existingBas.map(b => [b.name, b.id]));
       const sgByName = new Map(existingSgs.map(g => [g.name, g.id]));
+      const subByMgmtId = new Map(existingSubs.filter(s => s.managementId).map(s => [s.managementId!, s]));
 
       let added = 0;
+      let updated = 0;
+      let skipped = 0;
       const errors: string[] = [];
 
       for (let i = 1; i < allRows.length; i++) {
         try {
           const cols = allRows[i];
+          const csvMgmtId = (iMgmtId !== -1 && cols[iMgmtId]?.trim()) ? cols[iMgmtId].trim() : null;
           const serviceName = cols[iServiceName]?.trim();
           const amountStr = cols[iAmount]?.trim();
           if (!serviceName) { errors.push(`行${i + 1}: サービス名が空です`); continue; }
@@ -419,32 +429,54 @@ export async function registerRoutes(
           const statusStr = iStatus !== -1 ? cols[iStatus]?.trim() : "";
           const isActive = statusStr === "停止中" ? 0 : 1;
 
-          await storage.createSubscription({
-            serviceName,
-            planName: (iPlanName !== -1 && cols[iPlanName]?.trim()) ? cols[iPlanName].trim() : null,
-            billerName: (iBillerName !== -1 && cols[iBillerName]?.trim()) ? cols[iBillerName].trim() : null,
-            serviceUrl: (iServiceUrl !== -1 && cols[iServiceUrl]?.trim()) ? cols[iServiceUrl].trim() : null,
-            note: (iNote !== -1 && cols[iNote]?.trim()) ? cols[iNote].trim() : null,
-            amount,
-            currency,
-            billingCycle,
-            nextBillingDate,
-            categoryId,
-            paymentMethodId,
-            billingAccountId,
-            serviceGroupId,
-            scheduledAmount: null,
-            scheduledDate: null,
+          const planName = (iPlanName !== -1 && cols[iPlanName]?.trim()) ? cols[iPlanName].trim() : null;
+          const billerName = (iBillerName !== -1 && cols[iBillerName]?.trim()) ? cols[iBillerName].trim() : null;
+          const serviceUrl = (iServiceUrl !== -1 && cols[iServiceUrl]?.trim()) ? cols[iServiceUrl].trim() : null;
+          const note = (iNote !== -1 && cols[iNote]?.trim()) ? cols[iNote].trim() : null;
+
+          const payload = {
+            serviceName, planName, billerName, serviceUrl, note,
+            amount, currency, billingCycle, nextBillingDate,
+            categoryId, paymentMethodId, billingAccountId, serviceGroupId,
+            scheduledAmount: null as number | null,
+            scheduledDate: null as string | null,
             isActive,
-          });
-          added++;
+          };
+
+          if (csvMgmtId && subByMgmtId.has(csvMgmtId)) {
+            const existing = subByMgmtId.get(csvMgmtId)!;
+            const isSame =
+              existing.serviceName === payload.serviceName &&
+              (existing.planName ?? null) === payload.planName &&
+              (existing.billerName ?? null) === payload.billerName &&
+              (existing.serviceUrl ?? null) === payload.serviceUrl &&
+              (existing.note ?? null) === payload.note &&
+              existing.amount === payload.amount &&
+              existing.currency === payload.currency &&
+              existing.billingCycle === payload.billingCycle &&
+              (existing.nextBillingDate ?? null) === payload.nextBillingDate &&
+              (existing.categoryId ?? null) === payload.categoryId &&
+              (existing.paymentMethodId ?? null) === payload.paymentMethodId &&
+              (existing.billingAccountId ?? null) === payload.billingAccountId &&
+              (existing.serviceGroupId ?? null) === payload.serviceGroupId &&
+              existing.isActive === payload.isActive;
+            if (isSame) {
+              skipped++;
+            } else {
+              await storage.updateSubscription(existing.id, payload);
+              updated++;
+            }
+          } else {
+            await storage.createSubscription({ ...payload, managementId: csvMgmtId || undefined } as Parameters<typeof storage.createSubscription>[0]);
+            added++;
+          }
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : "不明なエラー";
           errors.push(`行${i + 1}: ${msg}`);
         }
       }
 
-      res.json({ added, errors });
+      res.json({ added, updated, skipped, errors });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "エラーが発生しました";
       res.status(500).json({ message });

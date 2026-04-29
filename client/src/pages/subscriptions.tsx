@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Filter, PackageOpen, ArrowUpDown, ArrowUp, ArrowDown, CalendarClock, Check, RefreshCw } from "lucide-react";
+import { Plus, Pencil, Trash2, Filter, PackageOpen, ArrowUpDown, ArrowUp, ArrowDown, CalendarClock, Check, RefreshCw, Copy, CheckCheck } from "lucide-react";
 import type { Subscription, Category, PaymentMethod, BillingAccount, ExchangeRate, ServiceGroup, ActualBillingDestination } from "@shared/schema";
 import { getCurrencyLabel } from "@/lib/currency";
 
@@ -176,6 +176,15 @@ export default function Subscriptions() {
   const [editingSub, setEditingSub] = useState<Subscription | null>(null);
   const [form, setForm] = useState<FormData>(defaultForm);
   const [deleteTarget, setDeleteTarget] = useState<Subscription | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const copyMgmtId = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(id).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(prev => prev === id ? null : prev), 1500);
+    });
+  };
 
   const { data: subscriptions, isLoading } = useQuery<Subscription[]>({ queryKey: ["/api/subscriptions"] });
   const { data: categories } = useQuery<Category[]>({ queryKey: ["/api/categories"] });
@@ -603,6 +612,17 @@ export default function Subscriptions() {
                               {sg && <Badge variant="outline" className="text-xs" style={{ borderColor: sg.color, color: sg.color }}>{sg.name}</Badge>}
                               {sub.billerName && <span className="flex items-center gap-1">請求: {sub.billerName}</span>}
                               {sub.note && <span className="truncate max-w-[180px]">{sub.note}</span>}
+                              {sub.managementId && (
+                                <button
+                                  onClick={e => copyMgmtId(sub.managementId!, e)}
+                                  className="flex items-center gap-0.5 font-mono text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors cursor-pointer"
+                                  title="管理IDをコピー"
+                                  data-testid={`button-copy-mgmt-id-${sub.id}`}
+                                >
+                                  {copiedId === sub.managementId ? <CheckCheck className="h-2.5 w-2.5 text-green-500" /> : <Copy className="h-2.5 w-2.5" />}
+                                  {sub.managementId}
+                                </button>
+                              )}
                             </div>
                           </td>
                           <td className="p-3 text-right align-top">
@@ -698,6 +718,17 @@ export default function Subscriptions() {
                           {pm && <span className="flex items-center gap-1"><CreditCardIcon />{pm.name}{ba ? ` / ${ba.name}` : ""}</span>}
                           {sg && <Badge variant="outline" className="text-xs" style={{ borderColor: sg.color, color: sg.color }}>{sg.name}</Badge>}
                           {sub.billerName && <span>請求: {sub.billerName}</span>}
+                          {sub.managementId && (
+                            <button
+                              onClick={e => copyMgmtId(sub.managementId!, e)}
+                              className="flex items-center gap-0.5 font-mono text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors cursor-pointer"
+                              title="管理IDをコピー"
+                              data-testid={`button-copy-mgmt-id-mobile-${sub.id}`}
+                            >
+                              {copiedId === sub.managementId ? <CheckCheck className="h-2.5 w-2.5 text-green-500" /> : <Copy className="h-2.5 w-2.5" />}
+                              {sub.managementId}
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">

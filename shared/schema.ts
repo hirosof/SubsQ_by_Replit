@@ -80,6 +80,7 @@ export type InsertExchangeRate = z.infer<typeof insertExchangeRateSchema>;
 
 export const subscriptions = pgTable("subscriptions", {
   id: serial("id").primaryKey(),
+  managementId: text("management_id").unique(),
   serviceName: text("service_name").notNull(),
   serviceUrl: text("service_url"),
   planName: text("plan_name"),

@@ -8,7 +8,25 @@ import {
   serviceGroups, type ServiceGroup, type InsertServiceGroup,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, isNull } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
+
+export function generateSubId(): string {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const bytes = randomBytes(8);
+  return Array.from(bytes, b => alphabet[b % alphabet.length]).join("");
+}
+
+export async function backfillManagementIds(): Promise<number> {
+  const rows = await db.select({ id: subscriptions.id }).from(subscriptions).where(isNull(subscriptions.managementId));
+  let count = 0;
+  for (const row of rows) {
+    await db.update(subscriptions).set({ managementId: generateSubId() }).where(eq(subscriptions.id, row.id));
+    count++;
+  }
+  if (count > 0) console.log(`[storage] Backfilled managementId for ${count} subscription(s)`);
+  return count;
+}
 
 export interface BackupCategory { id: number; name: string; color?: string; icon?: string; sortOrder?: number; }
 export interface BackupPaymentMethod { id: number; name: string; icon?: string; }
@@ -18,6 +36,7 @@ export interface BackupServiceGroup { id: number; name: string; color?: string; 
 export interface BackupExchangeRate { id: number; currency: string; rateToJpy: number; }
 export interface BackupSubscription {
   id: number;
+  managementId?: string | null;
   serviceName: string;
   serviceUrl?: string | null;
   planName?: string | null;
@@ -219,11 +238,13 @@ export class DatabaseStorage implements IStorage {
     return row || undefined;
   }
   async createSubscription(data: InsertSubscription): Promise<Subscription> {
-    const [row] = await db.insert(subscriptions).values(data).returning();
+    const managementId = (data.managementId as string | null | undefined) || generateSubId();
+    const [row] = await db.insert(subscriptions).values({ ...data, managementId }).returning();
     return row;
   }
   async updateSubscription(id: number, data: Partial<InsertSubscription>): Promise<Subscription | undefined> {
-    const [row] = await db.update(subscriptions).set(data).where(eq(subscriptions.id, id)).returning();
+    const { managementId: _ignored, ...safeData } = data as Partial<InsertSubscription> & { managementId?: unknown };
+    const [row] = await db.update(subscriptions).set(safeData).where(eq(subscriptions.id, id)).returning();
     return row || undefined;
   }
   async deleteSubscription(id: number): Promise<void> {
@@ -356,12 +377,19 @@ export class DatabaseStorage implements IStorage {
         await tx.insert(exchangeRates).values({ currency: er.currency, rateToJpy: er.rateToJpy });
       }
 
+      const usedMgmtIds = new Set<string>();
       for (const sub of data.subscriptions) {
         const newCatId = sub.categoryId != null ? (catMap.get(sub.categoryId) ?? null) : null;
         const newPmId = sub.paymentMethodId != null ? (pmMap.get(sub.paymentMethodId) ?? null) : null;
         const newBaId = sub.billingAccountId != null ? (baMap.get(sub.billingAccountId) ?? null) : null;
         const newSgId = sub.serviceGroupId != null ? (sgMap.get(sub.serviceGroupId) ?? null) : null;
+        let managementId = sub.managementId || null;
+        if (!managementId || usedMgmtIds.has(managementId)) {
+          managementId = generateSubId();
+        }
+        usedMgmtIds.add(managementId);
         await tx.insert(subscriptions).values({
+          managementId,
           serviceName: sub.serviceName,
           serviceUrl: sub.serviceUrl ?? null,
           planName: sub.planName ?? null,

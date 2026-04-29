@@ -82,17 +82,22 @@ export default function DataManagement() {
     mutationFn: async (file: File) => {
       const text = await file.text();
       const res = await apiRequest("POST", "/api/subscriptions/import", { csv: text });
-      const data = await res.json() as { added?: number; errors?: string[]; message?: string };
+      const data = await res.json() as { added?: number; updated?: number; skipped?: number; errors?: string[]; message?: string };
       if (!res.ok) throw new Error(data.message || "インポートに失敗しました");
-      return { added: data.added ?? 0, errors: data.errors ?? [] };
+      return { added: data.added ?? 0, updated: data.updated ?? 0, skipped: data.skipped ?? 0, errors: data.errors ?? [] };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/subscriptions"] });
       setImportFile(null);
       setImportPreviewCount(null);
       if (importInputRef.current) importInputRef.current.value = "";
+      const parts: string[] = [];
+      if (data.added > 0) parts.push(`${data.added}件追加`);
+      if (data.updated > 0) parts.push(`${data.updated}件更新`);
+      if (data.skipped > 0) parts.push(`${data.skipped}件スキップ（重複）`);
+      const title = parts.length > 0 ? parts.join("、") : "変更なし";
       const desc = data.errors.length > 0 ? `${data.errors.length}件のエラー: ${data.errors.slice(0, 3).join(" / ")}` : undefined;
-      toast({ title: `${data.added}件のサブスクリプションをインポートしました`, description: desc });
+      toast({ title: `インポート完了: ${title}`, description: desc });
     },
     onError: (e: Error) => toast({ title: "インポートエラー", description: e.message, variant: "destructive" }),
   });
