@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { storage, type BackupPayload, generateSubId } from "./storage";
+import { storage, type BackupPayload } from "./storage";
 import { insertCategorySchema, insertPaymentMethodSchema, insertActualBillingDestinationSchema, insertBillingAccountSchema, insertSubscriptionSchema, insertExchangeRateSchema, insertServiceGroupSchema } from "@shared/schema";
 import { isAuthenticated } from "./replit_integrations/auth";
 
@@ -467,7 +467,7 @@ export async function registerRoutes(
               updated++;
             }
           } else {
-            await storage.createSubscription({ ...payload, managementId: csvMgmtId || undefined } as Parameters<typeof storage.createSubscription>[0]);
+            await storage.createSubscription(payload, csvMgmtId || undefined);
             added++;
           }
         } catch (e: unknown) {

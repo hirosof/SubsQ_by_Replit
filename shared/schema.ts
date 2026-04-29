@@ -123,7 +123,7 @@ export const insertPaymentMethodSchema = createInsertSchema(paymentMethods).omit
 export const insertActualBillingDestinationSchema = createInsertSchema(actualBillingDestinations).omit({ id: true });
 export const insertBillingAccountSchema = createInsertSchema(billingAccounts).omit({ id: true });
 export const insertServiceGroupSchema = createInsertSchema(serviceGroups).omit({ id: true });
-export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({ id: true });
+export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({ id: true, managementId: true });
 
 export type Category = typeof categories.$inferSelect;
 export type InsertCategory = z.infer<typeof insertCategorySchema>;

@@ -104,7 +104,7 @@ export interface IStorage {
 
   getSubscriptions(): Promise<Subscription[]>;
   getSubscription(id: number): Promise<Subscription | undefined>;
-  createSubscription(data: InsertSubscription): Promise<Subscription>;
+  createSubscription(data: InsertSubscription, managementId?: string | null): Promise<Subscription>;
   updateSubscription(id: number, data: Partial<InsertSubscription>): Promise<Subscription | undefined>;
   deleteSubscription(id: number): Promise<void>;
   advanceBillingDates(): Promise<number>;
@@ -237,14 +237,13 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.select().from(subscriptions).where(eq(subscriptions.id, id));
     return row || undefined;
   }
-  async createSubscription(data: InsertSubscription): Promise<Subscription> {
-    const managementId = (data.managementId as string | null | undefined) || generateSubId();
-    const [row] = await db.insert(subscriptions).values({ ...data, managementId }).returning();
+  async createSubscription(data: InsertSubscription, managementId?: string | null): Promise<Subscription> {
+    const mId = managementId || generateSubId();
+    const [row] = await db.insert(subscriptions).values({ ...data, managementId: mId }).returning();
     return row;
   }
   async updateSubscription(id: number, data: Partial<InsertSubscription>): Promise<Subscription | undefined> {
-    const { managementId: _ignored, ...safeData } = data as Partial<InsertSubscription> & { managementId?: unknown };
-    const [row] = await db.update(subscriptions).set(safeData).where(eq(subscriptions.id, id)).returning();
+    const [row] = await db.update(subscriptions).set(data).where(eq(subscriptions.id, id)).returning();
     return row || undefined;
   }
   async deleteSubscription(id: number): Promise<void> {
