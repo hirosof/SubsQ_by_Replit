@@ -40,7 +40,7 @@
 - **CSVインポート**: CSVファイルからサブスクリプションを一括追加/更新（ドライランプレビュー → 確認ダイアログ → 実行の3ステップ）。管理IDベースの重複判定（一致・同内容→スキップ、一致・内容変更→更新、不一致→新規作成）
 
 ### その他
-- Replitアカウントによる認証
+- ユーザー名/パスワードによる認証（環境変数で設定）
 - iPhone Safari対応（dvh単位、safe-area-inset）
 - レスポンシブデザイン（モバイル/デスクトップ）
 
@@ -51,7 +51,7 @@
 | フロントエンド | React, TypeScript, Tailwind CSS, Shadcn UI, wouter |
 | バックエンド | Express.js, TypeScript |
 | データベース | PostgreSQL, Drizzle ORM |
-| 認証 | Replit Auth |
+| 認証 | express-session + bcryptjs（環境変数ベース） |
 | ドラッグ&ドロップ | @dnd-kit |
 | 外部API | ExchangeRate-API (為替レート取得) |
 
@@ -90,6 +90,9 @@
 | 変数名 | 説明 | 必須 |
 |--------|------|------|
 | `DATABASE_URL` | PostgreSQL接続URL | Yes |
+| `SESSION_SECRET` | セッション署名用の秘密鍵（長いランダム文字列推奨） | Yes |
+| `ADMIN_USERNAME` | ログイン用ユーザー名 | Yes |
+| `ADMIN_PASSWORD` | ログイン用パスワード（平文で設定、bcryptでハッシュ化して比較） | Yes |
 | `ExchangeRate_API_KEY` | ExchangeRate-API.comのAPIキー | No（為替レート自動更新に必要） |
 
 ### 起動方法

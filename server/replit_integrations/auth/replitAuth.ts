@@ -48,6 +48,13 @@ export function getSession() {
 }
 
 export async function setupAuth(app: Express) {
+  if (!process.env.SESSION_SECRET) {
+    throw new Error("SESSION_SECRET 環境変数が設定されていません。起動できません。");
+  }
+  if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD) {
+    throw new Error("ADMIN_USERNAME / ADMIN_PASSWORD 環境変数が設定されていません。起動できません。");
+  }
+
   await initPasswordHash();
 
   app.set("trust proxy", 1);
