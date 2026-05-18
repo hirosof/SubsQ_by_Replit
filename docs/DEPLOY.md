@@ -634,6 +634,7 @@ PORT=3000 npm run start
 - `ADMIN_USERNAME` と `ADMIN_PASSWORD` が正しく設定されているか確認
 - 環境変数の変更後はサーバーを再起動してください（起動時にパスワードハッシュを生成するため）
 - ブラウザのキャッシュ・Cookie をクリアして再試行
+- **Docker / HTTP 環境でログインが通らない場合**: `NODE_ENV=production` のとき、セッション Cookie に `secure: true` が設定されます。HTTPS 経由でないと Cookie が送信されないため、ログインが機能しません。Docker Compose でのローカル動作確認時は `NODE_ENV=development` を設定するか、nginx + Let's Encrypt などで HTTPS を構成してからアクセスしてください。
 
 ### db:push が失敗する
 
