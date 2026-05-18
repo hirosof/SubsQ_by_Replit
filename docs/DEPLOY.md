@@ -517,6 +517,8 @@ services:
 
   db:
     image: postgres:16-alpine
+    ports:
+      - "5432:5432"   # スキーマ適用（npm run db:push）をホスト側から実行するために公開
     environment:
       POSTGRES_USER: subsq_user
       POSTGRES_PASSWORD: subsq_password
@@ -550,7 +552,9 @@ ADMIN_PASSWORD=your-secure-password
 docker compose up -d --build
 
 # データベーススキーマの適用（初回のみ）
-docker compose exec app node_modules/.bin/drizzle-kit push
+# drizzle-kit は devDependency のため、ホスト側（コンテナ外）から実行します
+DATABASE_URL="postgresql://subsq_user:subsq_password@localhost:5432/subsq_db" npm run db:push
+# ※ PostgreSQL コンテナが起動してから実行してください（docker compose up db -d で先に起動しても可）
 
 # ログ確認
 docker compose logs -f app
@@ -558,6 +562,8 @@ docker compose logs -f app
 # 停止
 docker compose down
 ```
+
+> **補足**: `docker compose exec app` で `drizzle-kit` を実行しようとすると、ランタイムイメージには devDependency がインストールされていないため失敗します。スキーマ適用は必ずホスト側（`node_modules` が揃っている作業ディレクトリ）から実行してください。PostgreSQL コンテナのポートは `5432` でホストに公開されているため、`localhost:5432` で接続できます。
 
 ### 8-5. データのバックアップ
 
