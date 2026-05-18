@@ -133,14 +133,15 @@ fly auth login
 リポジトリのルートで実行します。
 
 ```bash
-fly launch
+fly launch --no-deploy
 ```
 
 対話形式で設定します：
 - **App name**: 任意の名前（例: `subsq-myapp`）
 - **Region**: `nrt`（東京）推奨
 - **Postgres**: `No`（Neon を使うため）
-- **Deploy now**: `No`（先に設定を完了させる）
+
+> `--no-deploy` を付けることで、対話終了後の自動デプロイをスキップします。シークレット設定・スキーマ適用を済ませてから、最後に `fly deploy` を実行してください。
 
 `fly.toml` が生成されます。内容を以下のように編集してください：
 
