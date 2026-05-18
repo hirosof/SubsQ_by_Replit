@@ -482,10 +482,14 @@
 
 ## 4. 認証
 
-- Replit Authを使用
-- ログイン画面でReplitアカウントによる認証を実施
-- 全APIエンドポイントに `isAuthenticated` ミドルウェアを適用
-- 未認証時はログイン画面を表示
+- ユーザー名 / パスワード認証（環境変数 `ADMIN_USERNAME` / `ADMIN_PASSWORD` で設定）
+- サーバー起動時に `ADMIN_PASSWORD` を bcrypt（saltRounds=12）でハッシュ化してメモリに保持
+- ログイン時は `bcrypt.compare` で検証、ユーザー名は `timingSafeEqual` で比較
+- セッションは `express-session` + `connect-pg-simple`（PostgreSQL の `sessions` テーブル）で管理
+- セッション有効期限: 7日間
+- 全 API エンドポイントに `isAuthenticated` ミドルウェアを適用（未認証時は 401 を返す）
+- 未認証時はログイン画面（ユーザー名 / パスワード入力フォーム）を表示
+- `SESSION_SECRET` / `ADMIN_USERNAME` / `ADMIN_PASSWORD` が未設定の場合はサーバー起動時にエラーで停止
 
 ---
 

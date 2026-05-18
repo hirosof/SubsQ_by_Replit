@@ -4,6 +4,8 @@
 サブスクリプションをカテゴリ別に管理し、多通貨対応で課金総額を把握できる日本語Webアプリケーション。
 
 ## Recent Changes
+- 2026-05-18: [Task #25] 外部デプロイ手順書（docs/DEPLOY.md）を作成 - Replit Deploy・Fly.io+Neon・Railway・Render・Ubuntu VPS・Docker Compose の6パターンを網羅
+- 2026-05-18: [Task #23] Replit固有OIDC認証をパスワード認証に置き換え（環境変数 ADMIN_USERNAME/ADMIN_PASSWORD + bcrypt検証、express-session維持）
 - 2026-04-29: ドキュメント（docs/SPECIFICATION.md・README.md・replit.md）を最新実装状態に更新
 - 2026-04-23: ダッシュボードに「今月の実請求予定」セクション追加（月額は常に含む、その他は nextBillingDate が今月のもの、未設定の非月額は件数警告表示、コラプシブル）
 - 2026-04-23: [Task #19] CSVインポート前プレビュー機能追加（/api/subscriptions/import-preview ドライランAPI、ファイル選択時に自動実行、確認ダイアログ付きインポートフロー）

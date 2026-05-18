@@ -108,3 +108,4 @@ npm run dev        # 開発サーバー起動（フロント + バック同時�
 ## ドキュメント
 
 - [機能仕様書](docs/SPECIFICATION.md) - データモデル、API、各ページの詳細仕様
+- [外部デプロイ手順書](docs/DEPLOY.md) - Fly.io+Neon・Railway・Render・VPS・Docker など各デプロイ先の手順
