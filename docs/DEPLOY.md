@@ -197,11 +197,13 @@ fly secrets list
 DATABASE_URL="postgresql://username:password@ep-xxx.ap-southeast-1.aws.neon.tech/neondb?sslmode=require" npm run db:push
 ```
 
-または Fly.io にデプロイ後に SSH で実行する場合：
+> **注意**: `fly ssh console` 経由でコンテナ内から `npm run db:push` を実行しようとすると、ビルド方式によっては `drizzle-kit` が同梱されておらず失敗する場合があります。上記のローカルから Neon へ直接接続して実行する方法を第一推奨とします。
+
+Fly.io 上にデプロイ済みで、ローカルに接続文字列がない場合のみ SSH 経由で試みてください：
 
 ```bash
 fly ssh console
-# コンソール内で:
+# コンソール内で（drizzle-kit が使える場合のみ）:
 cd /app && npm run db:push
 exit
 ```
@@ -262,17 +264,13 @@ DATABASE_URL=（PostgreSQLサービスからコピーした値）
 
 ### データベーススキーマの適用
 
-Railway のアプリ「Settings」→「Deploy」→「Custom Start Command」に以下を設定：
-
-```bash
-npm run db:push && npm run start
-```
-
-または Railway の「Shell」機能から手動実行：
+**推奨**: Railway の「Shell」機能から手動で1回だけ実行します：
 
 ```bash
 npm run db:push
 ```
+
+> **注意**: `npm run db:push && npm run start` を Custom Start Command に設定すると、毎デプロイ・毎再起動のたびにスキーマ適用が走ります。通常は初回のみ実行すれば十分なため、Shell からの手動実行を推奨します。スキーマを変更した際だけ再実行してください。
 
 ### 注意点
 
